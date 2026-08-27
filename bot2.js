@@ -2,14 +2,132 @@ const http = require("http");
 const axios = require("axios");
 
 // ==============================
-// HTTP SERVER & KEEP-ALIVE CHO RENDER (GIÚP BOT KHÔNG BAO GIỜ NGỦ 24/7)
+// DASHBOARD VÀ BỘ NHỚ LOG TRỰC TUYẾN
 // ==============================
 const PORT = process.env.PORT || 3000;
 const RENDER_URL = "https://zalobot-eqco.onrender.com";
 
+const chatLogs = [];
+let totalMessageCount = 0;
+
+function escapeHtml(text) {
+    if (!text) return "";
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function addLog(chatId, userQuestion, aiResponse) {
+    totalMessageCount++;
+    const now = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+    chatLogs.unshift({
+        id: totalMessageCount,
+        time: now,
+        chatId: chatId,
+        user: userQuestion,
+        bot: aiResponse
+    });
+    if (chatLogs.length > 50) chatLogs.pop();
+}
+
 http.createServer((req, res) => {
-    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Zalo Bot 2 (Groq Cloud API - GPT-OSS 120B) is running 24/7 online!");
+    if (req.url === "/api/logs") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ total: totalMessageCount, logs: chatLogs }));
+    }
+
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    
+    const html = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zalo Bot Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', system-ui, sans-serif; }
+        .card { background-color: #1e293b; border: 1px solid #334155; color: #f8fafc; border-radius: 12px; }
+        .table-custom { color: #e2e8f0; }
+        .table-custom th { background-color: #334155; color: #38bdf8; border-color: #475569; }
+        .table-custom td { border-color: #334155; }
+        .badge-user { background-color: #0284c7; color: white; }
+        .badge-time { background-color: #334155; color: #94a3b8; }
+        .user-msg { color: #38bdf8; font-weight: 600; }
+        .bot-msg { color: #f1f5f9; white-space: pre-wrap; }
+    </style>
+</head>
+<body class="p-3 p-md-5">
+    <div class="container-fluid max-w-6xl">
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <div>
+                <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Groq LPU Speed</small>
+            </div>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Keep-Alive Active)</span>
+        </div>
+        
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card p-3 shadow-sm">
+                    <span class="text-secondary small fw-bold">TỔNG SỐ TIN NHẮN</span>
+                    <h1 class="text-info display-5 fw-bold m-0 mt-1">${totalMessageCount}</h1>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 shadow-sm">
+                    <span class="text-secondary small fw-bold">TRẠNG THÁI SERVER</span>
+                    <h3 class="text-success fw-bold m-0 mt-2">Hoạt động bình thường</h3>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 shadow-sm">
+                    <span class="text-secondary small fw-bold">CƠ CHẾ CHỐNG NGỦ</span>
+                    <h3 class="text-warning fw-bold m-0 mt-2">Tự động Ping 5 phút/lần</h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-3 p-md-4 shadow">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="m-0 fw-bold">📜 Nhật ký trò chuyện Zalo gần đây</h4>
+                <button onclick="location.reload()" class="btn btn-sm btn-outline-info">🔄 Tải lại trang</button>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-custom align-middle m-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">#</th>
+                            <th style="width: 170px;">Thời gian</th>
+                            <th style="width: 140px;">User ID</th>
+                            <th>Câu hỏi (User)</th>
+                            <th>AI Phản hồi (Bot)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${chatLogs.length === 0 ? '<tr><td colspan="5" class="text-center text-secondary py-5">Chưa có tin nhắn trò chuyện nào từ Zalo...</td></tr>' : ''}
+                        ${chatLogs.map(l => `
+                            <tr>
+                                <td><span class="badge badge-time">${l.id}</span></td>
+                                <td><small class="text-secondary">${l.time}</small></td>
+                                <td><span class="badge badge-user">${l.chatId}</span></td>
+                                <td class="user-msg" style="max-width: 300px;">${escapeHtml(l.user)}</td>
+                                <td class="bot-msg" style="max-width: 500px;">${escapeHtml(l.bot)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    res.end(html);
 }).listen(PORT, () => {
     console.log(`HTTP Server listening on port ${PORT}`);
 });
@@ -212,7 +330,6 @@ async function askAI(chatId, prompt, imageUrl = null, isKeepAlive = false) {
         content: typeof msg.content === "string" ? msg.content : String(msg.content || "")
     }));
 
-    // Typing indicator (Chỉ bật khi là tin nhắn thật của user Zalo)
     let typingInterval = null;
     if (!isKeepAlive) {
         await sendChatAction(chatId, "typing");
@@ -280,7 +397,6 @@ Không thêm nội dung khác khi sử dụng cú pháp này.`
         const aiResponse =
             response.data.choices[0].message.content;
 
-        // Nếu là tin nhắn thật của user Zalo mới lưu vào bộ nhớ hội thoại
         if (!isKeepAlive) {
             updateMemory(chatId, "user", userContent);
             updateMemory(chatId, "assistant", aiResponse);
@@ -372,6 +488,11 @@ async function getUpdates() {
                         const aiResponse = hasImage
                             ? await askAI(chatId, userQuestion, message.photo_url)
                             : await askAI(chatId, userQuestion);
+
+                        // ==========================
+                        // LƯU LOG VÀO WEB DASHBOARD
+                        // ==========================
+                        addLog(chatId, userQuestion, aiResponse);
 
                         const imgMatch = aiResponse.match(/\[GEN_IMAGE:\s*(.*?)\]/i);
                         const isDrawCommand = textLower.startsWith("vẽ") || textLower.includes("vẽ ") || textLower.includes("tạo ảnh") || textLower.includes("tạo hình");
