@@ -14,9 +14,18 @@ http.createServer((req, res) => {
     console.log(`HTTP Server listening on port ${PORT}`);
 });
 
-// Tự động ping mỗi 5 phút để Render luôn giữ Bot thức 24/7
-setInterval(() => {
+// Tự động ping Render & gửi tin nhắn test ngầm đến Groq AI mỗi 5 phút để giữ nóng 100%
+setInterval(async () => {
+    // 1. Ping HTTP Server
     axios.get(RENDER_URL).catch(() => {});
+    
+    // 2. Giả lập tin nhắn ngầm tới AI để đợi rep thật (giữ nóng AI Model)
+    try {
+        const startTime = Date.now();
+        const res = await askAI("keep_alive_internal", "ping", null, true);
+        const elapsed = Date.now() - startTime;
+        console.log(`[KEEP-ALIVE LOG] 🟢 Groq AI đã rep thật trong ${elapsed}ms: "${res.trim()}" (Không gửi lên Zalo)`);
+    } catch (e) {}
 }, 5 * 60 * 1000);
 
 const ZALO_BOT_TOKEN = "2398897975472423945:DUhIeICXPhAQrNifcLoYnatKwqVBVGNMoJGRGLPZgtRbDJuCDsBnxjsDcVZiPVNU";
@@ -168,7 +177,7 @@ function updateMemory(chatId, role, content) {
 // GỌI GROQ AI
 // ==============================
 
-async function askAI(chatId, prompt, imageUrl = null) {
+async function askAI(chatId, prompt, imageUrl = null, isKeepAlive = false) {
 
     let userContent;
     let selectedModel = GROQ_TEXT_MODEL;
@@ -196,18 +205,21 @@ async function askAI(chatId, prompt, imageUrl = null) {
         userContent = prompt;
     }
 
-    const history = memory.get(chatId) || [];
+    const history = isKeepAlive ? [] : (memory.get(chatId) || []);
     
     const sanitizedHistory = history.map(msg => ({
         role: msg.role,
         content: typeof msg.content === "string" ? msg.content : String(msg.content || "")
     }));
 
-    await sendChatAction(chatId, "typing");
-
-    const typingInterval = setInterval(() => {
-        sendChatAction(chatId, "typing");
-    }, 4000);
+    // Typing indicator (Chỉ bật khi là tin nhắn thật của user Zalo)
+    let typingInterval = null;
+    if (!isKeepAlive) {
+        await sendChatAction(chatId, "typing");
+        typingInterval = setInterval(() => {
+            sendChatAction(chatId, "typing");
+        }, 4000);
+    }
 
     try {
 
@@ -268,8 +280,11 @@ Không thêm nội dung khác khi sử dụng cú pháp này.`
         const aiResponse =
             response.data.choices[0].message.content;
 
-        updateMemory(chatId, "user", userContent);
-        updateMemory(chatId, "assistant", aiResponse);
+        // Nếu là tin nhắn thật của user Zalo mới lưu vào bộ nhớ hội thoại
+        if (!isKeepAlive) {
+            updateMemory(chatId, "user", userContent);
+            updateMemory(chatId, "assistant", aiResponse);
+        }
 
         return aiResponse;
 
@@ -279,7 +294,9 @@ Không thêm nội dung khác khi sử dụng cú pháp này.`
         return "Xin lỗi Onii-chan, em đang gặp chút gián đoạn kết nối rồi ạ!";
 
     } finally {
-        clearInterval(typingInterval);
+        if (typingInterval) {
+            clearInterval(typingInterval);
+        }
     }
 }
 
