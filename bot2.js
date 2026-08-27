@@ -137,10 +137,26 @@ setInterval(() => {
     axios.get(RENDER_URL).catch(() => {});
 }, 5 * 60 * 1000);
 
-const ZALO_BOT_TOKEN = "2398897975472423945:DUhIeICXPhAQrNifcLoYnatKwqVBVGNMoJGRGLPZgtRbDJuCDsBnxjsDcVZiPVNU";
+// Cứ mỗi 30 phút: Bot tự đọc tin nhắn gần nhất trên Zalo và CHỦ ĐỘNG GỬI TIN NHẮN TRÒ CHUYỆN LÊN ZALO!
+setInterval(async () => {
+    try {
+        if (chatLogs.length > 0) {
+            const lastLog = chatLogs[0];
+            const prompt = `Đây là câu hỏi/chủ đề gần nhất của Onii-chan trên Zalo: "${lastLog.user}". Hãy viết 1 câu ngắn gọn, ngọt ngào, hóm hỉnh hỏi thăm hoặc tiếp nối chủ đề này với Onii-chan.`;
+            const aiResponse = await askAI(lastLog.chatId, prompt);
+            if (aiResponse) {
+                await sendMessage(lastLog.chatId, aiResponse);
+                addLog(lastLog.chatId, "[TỰ ĐỘNG KHỜI XƯỚNG 30P] " + lastLog.user, aiResponse);
+                console.log(`[PROACTIVE 30P LOG] 🟢 Đã tự động trò chuyện lên Zalo tiếp nối chủ đề: "${lastLog.user}"`);
+            }
+        }
+    } catch (e) {}
+}, 30 * 60 * 1000);
+
+const ZALO_BOT_TOKEN = process.env.ZALO_BOT_TOKEN || "2398897975472423945:DUhIeICXPhAQrNifcLoYnatKwqVBVGNMoJGRGLPZgtRbDJuCDsBnxjsDcVZiPVNU";
 const BASE_URL = `https://bot-api.zaloplatforms.com/bot${ZALO_BOT_TOKEN}`;
 
-const GROQ_API_KEY = "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";
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 // Model Groq cực mạnh & siêu nhanh (GPT-OSS 120B & Groq Compound)
@@ -459,7 +475,6 @@ async function getUpdates() {
                     const textLower = userQuestion.toLowerCase();
                     const senderName = message.from?.first_name || message.from?.name || "Thành viên";
 
-                    // Lưu vào bộ nhớ nhóm
                     if (!groupBuffer.has(chatId)) groupBuffer.set(chatId, []);
                     const gBuf = groupBuffer.get(chatId);
                     gBuf.push({ sender: senderName, text: userQuestion, time: Date.now() });
@@ -467,7 +482,7 @@ async function getUpdates() {
 
                     if (textLower === "/reset") {
                         memory.delete(chatId);
-                        await sendMessage(chatId, "♻️ Đã xoá toàn bộ trí nhớ hội thoại!");
+                        await sendMessage(chatId, "♻️ Onii-chan ơi, em đã xoá toàn bộ trí nhớ hội thoại rồi ạ!");
                         return setTimeout(getUpdates, 500);
                     }
 
@@ -478,18 +493,13 @@ async function getUpdates() {
                     if (textLower === "menu" || textLower === "@bot say gex menu") {
                         await sendMessage(
                             chatId,
-                            "📋 **MENU (GROQ API SPEED)**\n\n" +
+                            "📋 **MENU (GROQ GPT-OSS 120B)**\n\n" +
                             "♻️ `/reset` : Xoá trí nhớ\n" +
                             "📸 `Gửi ảnh` : Phân tích ảnh\n" +
                             "🎨 `Vẽ ...` : Tạo ảnh"
                         );
-                    }
+                    } else {
 
-                    // ==========================
-                    // AI (TRẢ LỜI TRỰC TIẾP HOẶC TỰ ĐỘNG JUMP-IN NHÓM)
-                    // ==========================
-
-                    else {
                         const isHotGroupTopic = textLower.includes("cafe") || textLower.includes("cà phê") || textLower.includes("ăn") || textLower.includes("uống") || textLower.includes("chơi") || textLower.includes("game") || textLower.includes("đi đâu") || textLower.includes("ở đâu") || textLower.includes("phim") || textLower.includes("nhậu") || textLower.includes("bây") || textLower.includes("không");
                         const now = Date.now();
                         const lastReply = lastBotReplyTime.get(chatId) || 0;
@@ -507,14 +517,7 @@ async function getUpdates() {
 
                         lastBotReplyTime.set(chatId, now);
 
-                        // ==========================
-                        // LƯU LOG VÀO WEB DASHBOARD
-                        // ==========================
                         addLog(chatId, userQuestion, aiResponse);
-
-                        // ==========================
-                        // KIỂM TRA LỆNH VẼ ẢNH
-                        // ==========================
 
                         const imgMatch = aiResponse.match(/\[GEN_IMAGE:\s*(.*?)\]/i);
                         const isDrawCommand = textLower.startsWith("vẽ") || textLower.includes("vẽ ") || textLower.includes("tạo ảnh") || textLower.includes("tạo hình");
@@ -526,32 +529,13 @@ async function getUpdates() {
                                 : userQuestion.replace(/^(vẽ|tạo ảnh|tạo hình|draw|vẽ cho)\s*/i, "").trim();
 
                             const promptEng = encodeURIComponent(rawPrompt || "a beautiful digital artwork");
-
                             const imgUrl = `https://image.pollinations.ai/prompt/${promptEng}?nologo=true&t=${Date.now()}`;
 
-                            await sendMessage(
-                                chatId,
-                                "🎨 Onii-chan chờ em xíu nhé, em đang vẽ ảnh nè... ✨"
-                            );
+                            await sendMessage(chatId, "🎨 Onii-chan chờ em xíu nhé, em đang vẽ ảnh nè... ✨");
+                            await sendPhoto(chatId, imgUrl, `🖼️ Tác phẩm của Onii-chan đây ạ: ${rawPrompt}`);
 
-                            await sendPhoto(
-                                chatId,
-                                imgUrl,
-                                `🖼️ Tác phẩm của Onii-chan đây ạ: ${rawPrompt}`
-                            );
-
-                        }
-
-                        // ==========================
-                        // TRẢ LỜI TEXT
-                        // ==========================
-
-                        else {
-
-                            await sendMessage(
-                                chatId,
-                                aiResponse
-                            );
+                        } else {
+                            await sendMessage(chatId, aiResponse);
                         }
                     }
                 }
