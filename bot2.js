@@ -153,11 +153,14 @@ setInterval(async () => {
     } catch (e) {}
 }, 30 * 60 * 1000);
 
-const ZALO_BOT_TOKEN = process.env.ZALO_BOT_TOKEN || "2398897975472423945:DUhIeICXPhAQrNifcLoYnatKwqVBVGNMoJGRGLPZgtRbDJuCDsBnxjsDcVZiPVNU";
+const ZALO_BOT_TOKEN = (process.env.ZALO_BOT_TOKEN || "").trim();
 const BASE_URL = `https://bot-api.zaloplatforms.com/bot${ZALO_BOT_TOKEN}`;
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_API_KEY = (process.env.GROQ_API_KEY || "").trim();
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+
+console.log("GROQ API KEY CHECK:", GROQ_API_KEY ? `✅ Groq Key: '${GROQ_API_KEY.substring(0, 8)}...'` : "❌ LỖI: Chưa nạp GROQ_API_KEY trong Render!");
+console.log("ZALO BOT TOKEN CHECK:", ZALO_BOT_TOKEN ? `✅ Zalo Token: '${ZALO_BOT_TOKEN.substring(0, 8)}...'` : "❌ LỖI: Chưa nạp ZALO_BOT_TOKEN trong Render!");
 
 // Model Groq cực mạnh & siêu nhanh (GPT-OSS 120B & Groq Compound)
 const GROQ_TEXT_MODEL = "openai/gpt-oss-120b";
