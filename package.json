@@ -1,10 +1,10 @@
 {
   "name": "zalo-puchibot-clone",
   "version": "1.0.0",
-  "description": "Zalo Bot AI",
-  "main": "bot.js",
+  "description": "Zalo Bot AI Groq",
+  "main": "bot2.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot2.js"
   },
   "dependencies": {
     "axios": "^1.19.0"
