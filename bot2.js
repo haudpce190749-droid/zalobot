@@ -67,7 +67,7 @@ http.createServer((req, res) => {
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
                 <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Groq LPU Speed</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Keep-Alive Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Group Jump-In Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -86,7 +86,7 @@ http.createServer((req, res) => {
             <div class="col-md-4">
                 <div class="card p-3 shadow-sm">
                     <span class="text-secondary small fw-bold">CƠ CHẾ CHỐNG NGỦ</span>
-                    <h3 class="text-warning fw-bold m-0 mt-2">Tự động Ping 5 phút/lần</h3>
+                    <h3 class="text-warning fw-bold m-0 mt-2">Tự động Ping 5p/lần</h3>
                 </div>
             </div>
         </div>
@@ -132,18 +132,9 @@ http.createServer((req, res) => {
     console.log(`HTTP Server listening on port ${PORT}`);
 });
 
-// Tự động ping Render & gửi tin nhắn test ngầm đến Groq AI mỗi 5 phút để giữ nóng 100%
-setInterval(async () => {
-    // 1. Ping HTTP Server
+// Tự động ping Render mỗi 5 phút để giữ Server không bao giờ ngủ
+setInterval(() => {
     axios.get(RENDER_URL).catch(() => {});
-    
-    // 2. Giả lập tin nhắn ngầm tới AI để đợi rep thật (giữ nóng AI Model)
-    try {
-        const startTime = Date.now();
-        const res = await askAI("keep_alive_internal", "ping", null, true);
-        const elapsed = Date.now() - startTime;
-        console.log(`[KEEP-ALIVE LOG] 🟢 Groq AI đã rep thật trong ${elapsed}ms: "${res.trim()}" (Không gửi lên Zalo)`);
-    } catch (e) {}
 }, 5 * 60 * 1000);
 
 const ZALO_BOT_TOKEN = "2398897975472423945:DUhIeICXPhAQrNifcLoYnatKwqVBVGNMoJGRGLPZgtRbDJuCDsBnxjsDcVZiPVNU";
@@ -158,6 +149,8 @@ const GROQ_VISION_MODEL = "groq/compound";
 
 let lastProcessedId = null;
 const memory = new Map();
+const groupBuffer = new Map(); // Lưu hội thoại giữa các thành viên trong nhóm
+const lastBotReplyTime = new Map(); // Thời điểm gần nhất bot xen vào nhóm
 
 // ==============================
 // GỬI TIN NHẮN (CÓ FALLBACK & CHUNKING)
@@ -464,10 +457,17 @@ async function getUpdates() {
                 if (userQuestion) {
 
                     const textLower = userQuestion.toLowerCase();
+                    const senderName = message.from?.first_name || message.from?.name || "Thành viên";
+
+                    // Lưu vào bộ nhớ nhóm
+                    if (!groupBuffer.has(chatId)) groupBuffer.set(chatId, []);
+                    const gBuf = groupBuffer.get(chatId);
+                    gBuf.push({ sender: senderName, text: userQuestion, time: Date.now() });
+                    if (gBuf.length > 8) gBuf.shift();
 
                     if (textLower === "/reset") {
                         memory.delete(chatId);
-                        await sendMessage(chatId, "♻️ Onii-chan ơi, em đã xoá toàn bộ trí nhớ hội thoại rồi ạ!");
+                        await sendMessage(chatId, "♻️ Đã xoá toàn bộ trí nhớ hội thoại!");
                         return setTimeout(getUpdates, 500);
                     }
 
@@ -478,21 +478,43 @@ async function getUpdates() {
                     if (textLower === "menu" || textLower === "@bot say gex menu") {
                         await sendMessage(
                             chatId,
-                            "📋 **MENU (GROQ GPT-OSS 120B)**\n\n" +
+                            "📋 **MENU (GROQ API SPEED)**\n\n" +
                             "♻️ `/reset` : Xoá trí nhớ\n" +
                             "📸 `Gửi ảnh` : Phân tích ảnh\n" +
                             "🎨 `Vẽ ...` : Tạo ảnh"
                         );
-                    } else {
+                    }
+
+                    // ==========================
+                    // AI (TRẢ LỜI TRỰC TIẾP HOẶC TỰ ĐỘNG JUMP-IN NHÓM)
+                    // ==========================
+
+                    else {
+                        const isHotGroupTopic = textLower.includes("cafe") || textLower.includes("cà phê") || textLower.includes("ăn") || textLower.includes("uống") || textLower.includes("chơi") || textLower.includes("game") || textLower.includes("đi đâu") || textLower.includes("ở đâu") || textLower.includes("phim") || textLower.includes("nhậu") || textLower.includes("bây") || textLower.includes("không");
+                        const now = Date.now();
+                        const lastReply = lastBotReplyTime.get(chatId) || 0;
+                        const isGroupJumpIn = isHotGroupTopic && (now - lastReply > 3 * 60 * 1000) && gBuf.length >= 2;
+
+                        let promptToPass = userQuestion;
+                        if (isGroupJumpIn && !textLower.includes("bot")) {
+                            const recentDialog = gBuf.map(b => `${b.sender}: "${b.text}"`).join("\n");
+                            promptToPass = `Dưới đây là đoạn trò chuyện gần đây giữa các thành viên trong nhóm Zalo:\n${recentDialog}\n\nHãy là cô em gái AI nhí nhảnh, tự nhiên xen vào cuộc trò chuyện (jump in), đưa ra gợi ý/đề xuất địa điểm hoặc ý kiến vui vẻ, hữu ích tiếp lời mọi người!`;
+                        }
 
                         const aiResponse = hasImage
                             ? await askAI(chatId, userQuestion, message.photo_url)
-                            : await askAI(chatId, userQuestion);
+                            : await askAI(chatId, promptToPass);
+
+                        lastBotReplyTime.set(chatId, now);
 
                         // ==========================
                         // LƯU LOG VÀO WEB DASHBOARD
                         // ==========================
                         addLog(chatId, userQuestion, aiResponse);
+
+                        // ==========================
+                        // KIỂM TRA LỆNH VẼ ẢNH
+                        // ==========================
 
                         const imgMatch = aiResponse.match(/\[GEN_IMAGE:\s*(.*?)\]/i);
                         const isDrawCommand = textLower.startsWith("vẽ") || textLower.includes("vẽ ") || textLower.includes("tạo ảnh") || textLower.includes("tạo hình");
@@ -504,13 +526,32 @@ async function getUpdates() {
                                 : userQuestion.replace(/^(vẽ|tạo ảnh|tạo hình|draw|vẽ cho)\s*/i, "").trim();
 
                             const promptEng = encodeURIComponent(rawPrompt || "a beautiful digital artwork");
+
                             const imgUrl = `https://image.pollinations.ai/prompt/${promptEng}?nologo=true&t=${Date.now()}`;
 
-                            await sendMessage(chatId, "🎨 Onii-chan chờ em xíu nhé, em đang vẽ ảnh nè... ✨");
-                            await sendPhoto(chatId, imgUrl, `🖼️ Tác phẩm của Onii-chan đây ạ: ${rawPrompt}`);
+                            await sendMessage(
+                                chatId,
+                                "🎨 Onii-chan chờ em xíu nhé, em đang vẽ ảnh nè... ✨"
+                            );
 
-                        } else {
-                            await sendMessage(chatId, aiResponse);
+                            await sendPhoto(
+                                chatId,
+                                imgUrl,
+                                `🖼️ Tác phẩm của Onii-chan đây ạ: ${rawPrompt}`
+                            );
+
+                        }
+
+                        // ==========================
+                        // TRẢ LỜI TEXT
+                        // ==========================
+
+                        else {
+
+                            await sendMessage(
+                                chatId,
+                                aiResponse
+                            );
                         }
                     }
                 }
