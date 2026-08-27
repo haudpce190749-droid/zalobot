@@ -2,14 +2,14 @@ const http = require("http");
 const axios = require("axios");
 
 // ==============================
-// HTTP SERVER & KEEP-ALIVE CHO RENDER (GIÚP BOT KHÔNG BAO GIỜ NGỦ)
+// HTTP SERVER & KEEP-ALIVE CHO RENDER (GIÚP BOT KHÔNG BAO GIỜ NGỦ 24/7)
 // ==============================
 const PORT = process.env.PORT || 3000;
 const RENDER_URL = "https://zalobot-eqco.onrender.com";
 
 http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Zalo Bot 2 (Groq Cloud API) is running 24/7 online!");
+    res.end("Zalo Bot 2 (Groq Cloud API - GPT-OSS 120B) is running 24/7 online!");
 }).listen(PORT, () => {
     console.log(`HTTP Server listening on port ${PORT}`);
 });
@@ -39,7 +39,6 @@ const memory = new Map();
 async function sendMessage(chatId, text) {
     if (!text) return;
     
-    // Nếu tin nhắn quá dài (> 1500 ký tự), chia nhỏ để tránh bị Zalo API từ chối
     const maxLength = 1500;
     if (text.length > maxLength) {
         for (let i = 0; i < text.length; i += maxLength) {
@@ -160,7 +159,6 @@ function updateMemory(chatId, role, content) {
         content: textContent
     });
 
-    // Giữ tối đa 20 message gần nhất
     if (history.length > 20) {
         history.shift();
     }
@@ -175,7 +173,6 @@ async function askAI(chatId, prompt, imageUrl = null) {
     let userContent;
     let selectedModel = GROQ_TEXT_MODEL;
 
-    // Nếu có ảnh
     if (imageUrl) {
         selectedModel = GROQ_VISION_MODEL;
         const base64Image = await fetchImageAsBase64(imageUrl);
@@ -201,13 +198,11 @@ async function askAI(chatId, prompt, imageUrl = null) {
 
     const history = memory.get(chatId) || [];
     
-    // Ép kiểu 100% tin nhắn trong lịch sử thành chuỗi thuần túy (String)
     const sanitizedHistory = history.map(msg => ({
         role: msg.role,
         content: typeof msg.content === "string" ? msg.content : String(msg.content || "")
     }));
 
-    // Typing indicator
     await sendChatAction(chatId, "typing");
 
     const typingInterval = setInterval(() => {
@@ -273,32 +268,17 @@ Không thêm nội dung khác khi sử dụng cú pháp này.`
         const aiResponse =
             response.data.choices[0].message.content;
 
-        // Lưu hội thoại
-        updateMemory(
-            chatId,
-            "user",
-            userContent
-        );
-
-        updateMemory(
-            chatId,
-            "assistant",
-            aiResponse
-        );
+        updateMemory(chatId, "user", userContent);
+        updateMemory(chatId, "assistant", aiResponse);
 
         return aiResponse;
 
     } catch (error) {
 
-        console.error(
-            "Lỗi Groq AI:",
-            error?.response?.data || error.message
-        );
-
-        return "Xin lỗi, Groq AI đang bận xử lý hoặc kết nối bị gián đoạn.";
+        console.error("Lỗi Groq AI:", error?.response?.data || error.message);
+        return "Xin lỗi Onii-chan, em đang gặp chút gián đoạn kết nối rồi ạ!";
 
     } finally {
-
         clearInterval(typingInterval);
     }
 }
@@ -314,24 +294,13 @@ async function getUpdates() {
         const response = await axios.get(
             `${BASE_URL}/getUpdates`,
             {
-                params: {
-                    timeout: 30
-                },
-
-                validateStatus: status =>
-                    (status >= 200 && status < 300) ||
-                    status === 408
+                params: { timeout: 30 },
+                validateStatus: status => (status >= 200 && status < 300) || status === 408
             }
         );
 
-        // Timeout → gọi lại
         if (response.status === 408) {
-
-            setTimeout(
-                getUpdates,
-                100
-            );
-
+            setTimeout(getUpdates, 100);
             return;
         }
 
@@ -342,131 +311,50 @@ async function getUpdates() {
             response.data.result.message
         ) {
 
-            const message =
-                response.data.result.message;
+            const message = response.data.result.message;
 
-            // Tránh xử lý cùng một message nhiều lần
             if (message.message_id !== lastProcessedId) {
 
-                lastProcessedId =
-                    message.message_id;
+                lastProcessedId = message.message_id;
 
                 let userQuestion = "";
                 let hasImage = false;
+                const chatId = message.chat.id;
 
-                const chatId =
-                    message.chat.id;
-
-                // ==========================
-                // ẢNH
-                // ==========================
-
-                if (
-                    message.message_type === "CHAT_PHOTO" &&
-                    message.photo_url
-                ) {
-
-                    userQuestion =
-                        message.caption ||
-                        "Phân tích ảnh này.";
-
+                if (message.message_type === "CHAT_PHOTO" && message.photo_url) {
+                    userQuestion = message.caption || "Phân tích ảnh này.";
                     hasImage = true;
-
+                } else if (message.text) {
+                    userQuestion = message.text;
                 }
-
-                // ==========================
-                // TEXT
-                // ==========================
-
-                else if (message.text) {
-
-                    userQuestion =
-                        message.text;
-                }
-
-                // ==========================
-                // XỬ LÝ MESSAGE
-                // ==========================
 
                 if (userQuestion) {
 
-                    const textLower =
-                        userQuestion.toLowerCase();
-
-                    // ==========================
-                    // RESET MEMORY
-                    // ==========================
+                    const textLower = userQuestion.toLowerCase();
 
                     if (textLower === "/reset") {
-
                         memory.delete(chatId);
-
-                        await sendMessage(
-                            chatId,
-                            "♻️ Đã xoá toàn bộ trí nhớ hội thoại!"
-                        );
-
-                        return setTimeout(
-                            getUpdates,
-                            500
-                        );
+                        await sendMessage(chatId, "♻️ Onii-chan ơi, em đã xoá toàn bộ trí nhớ hội thoại rồi ạ!");
+                        return setTimeout(getUpdates, 500);
                     }
 
-                    // ==========================
-                    // STICKER KHI ĐƯỢC KHEN
-                    // ==========================
-
-                    if (
-                        textLower.includes("cảm ơn") ||
-                        textLower.includes("tuyệt vời") ||
-                        textLower.includes("haha")
-                    ) {
-
-                        await sendSticker(
-                            chatId,
-                            "1"
-                        );
+                    if (textLower.includes("cảm ơn") || textLower.includes("tuyệt vời") || textLower.includes("haha")) {
+                        await sendSticker(chatId, "1");
                     }
 
-                    // ==========================
-                    // MENU
-                    // ==========================
-
-                    if (
-                        textLower === "menu" ||
-                        textLower === "@bot say gex menu"
-                    ) {
-
+                    if (textLower === "menu" || textLower === "@bot say gex menu") {
                         await sendMessage(
                             chatId,
-                            "📋 **MENU (GROQ API SPEED)**\n\n" +
+                            "📋 **MENU (GROQ GPT-OSS 120B)**\n\n" +
                             "♻️ `/reset` : Xoá trí nhớ\n" +
                             "📸 `Gửi ảnh` : Phân tích ảnh\n" +
                             "🎨 `Vẽ ...` : Tạo ảnh"
                         );
-                    }
+                    } else {
 
-                    // ==========================
-                    // AI
-                    // ==========================
-
-                    else {
-
-                        const aiResponse =
-                            hasImage
-                                ? await askAI(
-                                    chatId,
-                                    userQuestion,
-                                    message.photo_url
-                                )
-                                : await askAI(
-                                    chatId,
-                                    userQuestion
-                                );
-
-                        // ==========================
-                        // KIỂM TRA LỆNH VẼ ẢNH
-                        // ==========================
+                        const aiResponse = hasImage
+                            ? await askAI(chatId, userQuestion, message.photo_url)
+                            : await askAI(chatId, userQuestion);
 
                         const imgMatch = aiResponse.match(/\[GEN_IMAGE:\s*(.*?)\]/i);
                         const isDrawCommand = textLower.startsWith("vẽ") || textLower.includes("vẽ ") || textLower.includes("tạo ảnh") || textLower.includes("tạo hình");
@@ -478,32 +366,13 @@ async function getUpdates() {
                                 : userQuestion.replace(/^(vẽ|tạo ảnh|tạo hình|draw|vẽ cho)\s*/i, "").trim();
 
                             const promptEng = encodeURIComponent(rawPrompt || "a beautiful digital artwork");
-
                             const imgUrl = `https://image.pollinations.ai/prompt/${promptEng}?nologo=true&t=${Date.now()}`;
 
-                            await sendMessage(
-                                chatId,
-                                "🎨 Onii-chan chờ em xíu nhé, em đang vẽ ảnh nè... ✨"
-                            );
+                            await sendMessage(chatId, "🎨 Onii-chan chờ em xíu nhé, em đang vẽ ảnh nè... ✨");
+                            await sendPhoto(chatId, imgUrl, `🖼️ Tác phẩm của Onii-chan đây ạ: ${rawPrompt}`);
 
-                            await sendPhoto(
-                                chatId,
-                                imgUrl,
-                                `🖼️ Tác phẩm của Onii-chan đây ạ: ${rawPrompt}`
-                            );
-
-                        }
-
-                        // ==========================
-                        // TRẢ LỜI TEXT
-                        // ==========================
-
-                        else {
-
-                            await sendMessage(
-                                chatId,
-                                aiResponse
-                            );
+                        } else {
+                            await sendMessage(chatId, aiResponse);
                         }
                     }
                 }
@@ -511,35 +380,14 @@ async function getUpdates() {
         }
 
     } catch (error) {
-
-        console.error(
-            "Lỗi getUpdates:",
-            error?.response?.data ||
-            error.message
-        );
+        console.error("Lỗi getUpdates:", error?.response?.data || error.message);
     }
 
-    // Tiếp tục polling
-    setTimeout(
-        getUpdates,
-        500
-    );
+    setTimeout(getUpdates, 500);
 }
 
-// ==============================
-// KHỞI ĐỘNG BOT GROQ
-// ==============================
-
-console.log(
-    "========================================="
-);
-
-console.log(
-    " ZALO BOT GROQ API (LLAMA 3.3 70B SPEED) "
-);
-
-console.log(
-    "========================================="
-);
+console.log("=========================================");
+console.log(" ZALO BOT GROQ API (GPT-OSS 120B ONLINE) ");
+console.log("=========================================");
 
 getUpdates();
