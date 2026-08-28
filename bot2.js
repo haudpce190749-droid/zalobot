@@ -83,9 +83,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Zalo Clean Payload Active)</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Fast 60s Render)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Zalo Clean Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Fast Render Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -362,56 +362,58 @@ async function generateAceMusic(promptStyle, lyricsText = "") {
     const ACE_CLOUD_URL = "https://api.acemusic.ai/v1/chat/completions";
     const ACE_API_KEY = (process.env.ACE_API_KEY || "31fb983fc1634086b981d3f75befee34").trim();
 
-    try {
-        console.log(`[ACE MUSIC CLOUD] 🎵 Đang gửi request sang ACE Music Cloud (acemusic/acestep-v15-turbo)...`);
-        
-        let contentMessage = `<prompt>${promptStyle || "vpop, upbeat, female vocal"}</prompt>`;
-        if (lyricsText && lyricsText.trim() !== "") {
-            contentMessage += `\n<lyrics>${lyricsText}</lyrics>`;
-        }
+    let contentMessage = `<prompt>${promptStyle || "vpop, upbeat, female vocal"}</prompt>`;
+    if (lyricsText && lyricsText.trim() !== "") {
+        contentMessage += `\n<lyrics>${lyricsText}</lyrics>`;
+    }
 
-        const payload = {
-            model: "acemusic/acestep-v15-turbo",
-            messages: [{ role: "user", content: contentMessage }],
-            use_format: true,
-            use_cot_caption: true,
-            audio_config: { duration: 180, format: "mp3", vocal_language: "vi" }
-        };
+    const payload = {
+        model: "acemusic/acestep-v15-turbo",
+        messages: [{ role: "user", content: contentMessage }],
+        use_format: true,
+        use_cot_caption: true,
+        audio_config: { duration: 60, format: "mp3", vocal_language: "vi" }
+    };
 
-        const res = await axios.post(ACE_CLOUD_URL, payload, {
-            headers: {
-                "Authorization": `Bearer ${ACE_API_KEY}`,
-                "Content-Type": "application/json"
-            },
-            timeout: 300000 // Chờ tối đa 5 phút cho Cloud render nhạc
-        });
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            console.log(`[ACE MUSIC CLOUD] 🎵 Đang gửi request sang ACE Music Cloud (Lần thử ${attempt}/2, duration 60s)...`);
+            const res = await axios.post(ACE_CLOUD_URL, payload, {
+                headers: {
+                    "Authorization": `Bearer ${ACE_API_KEY}`,
+                    "Content-Type": "application/json"
+                },
+                timeout: 120000
+            });
 
-        const choice = res.data?.choices?.[0];
-        const audioArr = choice?.message?.audio;
-        if (audioArr && audioArr.length > 0) {
-            const rawAudioUrl = audioArr[0]?.audio_url?.url || audioArr[0]?.url;
-            if (rawAudioUrl) {
-                console.log(`[ACE MUSIC CLOUD SUCCESS] 🎶 Đã tạo xong nhạc MP3!`);
-                if (rawAudioUrl.startsWith("data:audio")) {
-                    const base64Data = rawAudioUrl.split(",")[1];
-                    const buffer = Buffer.from(base64Data, "base64");
-                    const songId = `song_${Date.now()}`;
-                    audioStore.set(songId, buffer);
-                    
-                    if (audioStore.size > 10) {
-                        const firstKey = audioStore.keys().next().value;
-                        audioStore.delete(firstKey);
+            const choice = res.data?.choices?.[0];
+            const audioArr = choice?.message?.audio;
+            if (audioArr && audioArr.length > 0) {
+                const rawAudioUrl = audioArr[0]?.audio_url?.url || audioArr[0]?.url;
+                if (rawAudioUrl) {
+                    console.log(`[ACE MUSIC CLOUD SUCCESS] 🎶 Đã tạo xong nhạc MP3!`);
+                    if (rawAudioUrl.startsWith("data:audio")) {
+                        const base64Data = rawAudioUrl.split(",")[1];
+                        const buffer = Buffer.from(base64Data, "base64");
+                        const songId = `song_${Date.now()}`;
+                        audioStore.set(songId, buffer);
+                        
+                        if (audioStore.size > 10) {
+                            const firstKey = audioStore.keys().next().value;
+                            audioStore.delete(firstKey);
+                        }
+                        
+                        const publicAudioUrl = `${RENDER_URL}/audio/${songId}.mp3`;
+                        console.log(`[AUDIO SERVER] 🌐 Đã cấp link MP3 công khai cho Zalo: ${publicAudioUrl}`);
+                        return publicAudioUrl;
                     }
-                    
-                    const publicAudioUrl = `${RENDER_URL}/audio/${songId}.mp3`;
-                    console.log(`[AUDIO SERVER] 🌐 Đã cấp link MP3 công khai cho Zalo: ${publicAudioUrl}`);
-                    return publicAudioUrl;
+                    return rawAudioUrl;
                 }
-                return rawAudioUrl;
             }
+        } catch (err) {
+            console.error(`Lỗi ACE Music Cloud API (Lần ${attempt}):`, err?.response?.data?.title || err?.response?.data || err.message);
+            if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 3000));
         }
-    } catch (err) {
-        console.error("Lỗi ACE Music Cloud API:", err?.response?.data || err.message);
     }
 
     return null;
