@@ -83,9 +83,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Direct MP3 Link Active)</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (25s Ultra Fast Render)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Direct Link Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Ultra Fast Render Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -380,19 +380,19 @@ async function generateAceMusic(promptStyle, lyricsText = "") {
         model: "acemusic/acestep-v15-turbo",
         messages: [{ role: "user", content: contentMessage }],
         use_format: true,
-        use_cot_caption: true,
-        audio_config: { duration: 60, format: "mp3", vocal_language: "vi" }
+        use_cot_caption: false,
+        audio_config: { duration: 45, format: "mp3", vocal_language: "vi" }
     };
 
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-            console.log(`[ACE MUSIC CLOUD] 🎵 Gửi request ACE Cloud (Lần thử ${attempt}/2, chờ tối đa 6 phút)... Prompt: "${promptStyle}" | Lyrics: ${lyricsText ? lyricsText.length + " ký tự" : "RỐNG"}`);
+            console.log(`[ACE MUSIC CLOUD] 🎵 Gửi request ACE Cloud (Lần thử ${attempt}/2, siêu tốc 25s)... Prompt: "${promptStyle}" | Lyrics: ${lyricsText ? lyricsText.length + " ký tự" : "RỐNG"}`);
             const res = await axios.post(ACE_CLOUD_URL, payload, {
                 headers: {
                     "Authorization": `Bearer ${ACE_API_KEY}`,
                     "Content-Type": "application/json"
                 },
-                timeout: 360000 // Chờ tối đa 6 phút cho Cloud render nhạc
+                timeout: 360000
             });
 
             const choice = res.data?.choices?.[0];
