@@ -442,7 +442,7 @@ Nếu user yêu cầu tạo hình ảnh, chỉ trả về đúng một cú pháp
 [GEN_IMAGE: <prompt_tiếng_anh>]
 
 5. BẮT BUỘC SỬ DỤNG MCP EXA SEARCH ENGINE KHI TRA CỨU:
-Vì dữ liệu của model AI đã cũ, BẮT BUỘC xuất ra cú pháp JSON gọi MCP Exa Tool đối với BẮT KY CÂU HỎI NÀO liên quan đến tra cứu thông tin, tìm hiểu người nổi tiếng (ca sĩ, diễn viên, KOL, doanh nhân...), tin tức thời sự, sự kiện, thời tiết, giá thị trường, hoặc câu hỏi có vẻ cần cập nhật thông tin:
+Vì dữ liệu của model AI đã cũ, BẮT BUỘC xuất ra cú pháp JSON gọi MCP Exa Tool đối với BẮT KỲ CÂU HỎI NÀO liên quan đến tra cứu thông tin, tìm hiểu người nổi tiếng (ca sĩ, diễn viên, KOL, doanh nhân...), tin tức thời sự, sự kiện, thời tiết, giá thị trường, hoặc câu hỏi có vẻ cần cập nhật thông tin:
 [SEARCH_REQ: {"query": "từ khóa tìm kiếm chi tiết"}]
 Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: ...]. Tuyệt đối không tự trả lời mò bằng kiến thức cũ khi chưa có dữ liệu MCP Search!`
         };
@@ -480,18 +480,20 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
         if (searchMatch && searchMatch[1]) {
             try {
                 const searchJson = JSON.parse(searchMatch[1]);
-                console.log(`[MCP TOOL DETECTED] ⚡ Đang đón đầu yêu cầu tìm kiếm Exa MCP: "${searchJson.query}"`);
+                console.log(`[MCP TOOL DETECTED] ⚡ Đang tra cứu Exa MCP Server: "${searchJson.query}"`);
                 
                 const searchResults = await searchWebExa(searchJson.query);
 
+                // Pass 2: Gửi câu hỏi kèm dữ liệu thực tế từ Exa MCP cho Groq AI tổng hợp (SẠCH SẼ, KHÔNG DỰ DƯ LỆNH THÔ)
                 const pass2Payload = {
                     model: selectedModel,
                     messages: [
                         systemMessage,
                         ...sanitizedHistory,
-                        { role: "user", content: userContent },
-                        { role: "assistant", content: aiResponse },
-                        { role: "user", content: `[DỮ LIỆU TÌM KIẾM TRỰC TUYẾN MỚI NHẤT VỪA TRA CỨU TỪ EXA MCP SERVER]:\n${searchResults}\n\nDựa vào dữ liệu thực tế vừa tìm kiếm được ở trên, hãy tổng hợp câu trả lời chính xác 100%, mới nhất và ngọt ngào cho Onii-chan! TUYỆT ĐỐI không bịa đặt hoặc vu khống!` }
+                        { 
+                            role: "user", 
+                            content: `Câu hỏi của Onii-chan: "${userContent}"\n\n[DỮ LIỆU TÌM KIẾM THỰC TẾ REALTIME VỪA TRA CỨU TỪ EXA MCP SERVER]:\n${searchResults}\n\nDựa trên dữ liệu tra cứu thực tế trên, hãy tổng hợp câu trả lời chi tiết, chính xác 100%, mới nhất và ngọt ngào cho Onii-chan!` 
+                        }
                     ],
                     temperature: 0.6,
                     max_tokens: 2048,
@@ -510,7 +512,9 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
                     }
                 );
 
-                aiResponse = pass2Response.data.choices[0].message.content;
+                if (pass2Response.data?.choices?.[0]?.message?.content) {
+                    aiResponse = pass2Response.data.choices[0].message.content;
+                }
 
             } catch (errParse) {
                 console.error("Lỗi xử lý MCP Search Tool:", errParse.message);
@@ -518,13 +522,10 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
         }
 
         // ========================================================
-        // AN TOÀN: BỘ LỌC KHÔNG ĐỂ LỌT CHUỖI THÔ [SEARCH_REQ: ...] NỐI LÊN ZALO
+        // AN TOÀN: BỘ LỌC NẾU CÒN DỰ DƯ THÌ LỌC SẠCH LỆNH THÔ
         // ========================================================
         if (aiResponse.includes("[SEARCH_REQ:")) {
             aiResponse = aiResponse.replace(/\[SEARCH_REQ:\s*\{.*?\}\]/gs, "").trim();
-            if (!aiResponse) {
-                aiResponse = "Dạ Onii-chan ơi, em đang tóm tắt dữ liệu tin tức mới nhất vừa tìm kiếm, Onii-chan chờ em xíu nhé! ✨";
-            }
         }
 
         if (!isKeepAlive) {
