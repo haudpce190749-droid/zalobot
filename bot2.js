@@ -65,9 +65,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | True Group Member Mode</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP Streamable HTTP</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Realtime Member Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Exa MCP Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -137,9 +137,7 @@ setInterval(() => {
     axios.get(RENDER_URL).catch(() => {});
 }, 5 * 60 * 1000);
 
-// Cứ mỗi 15-20 phút: Đóng vai 1 THÀNH VIÊN NHÓM THẬT SỰ - Kiểm tra xem mọi người trong nhóm có nhắn tin mới với nhau không.
-// Nếu CÓ người nhắn trong nhóm ➔ Bot đọc tin nhắn thật đó và nhảy vào rep! 
-// Nếu KHÔNG có ai nhắn ➔ Bot im lặng 100%, tuyệt đối không nhắn linh tinh!
+// Cứ mỗi 15-20 phút: Đóng vai 1 THÀTH VIÊN NHÓM THẬT SỰ - Kiểm tra xem mọi người trong nhóm có nhắn tin mới với nhau không.
 setInterval(async () => {
     try {
         const now = Date.now();
@@ -149,7 +147,6 @@ setInterval(async () => {
             const lastMsgTime = buffer[buffer.length - 1].time;
             const lastReply = lastBotReplyTime.get(chatId) || 0;
 
-            // Nếu trong 20 phút qua CÓ tin nhắn mới của các thành viên trong nhóm và Bot chưa rep
             if ((now - lastMsgTime < 20 * 60 * 1000) && (now - lastReply > 15 * 60 * 1000)) {
                 const groupDialog = buffer.map(b => `${b.sender}: "${b.text}"`).join("\n");
                 const prompt = `Dưới đây là các tin nhắn thực tế vừa diễn ra giữa mọi người trong nhóm Zalo:\n${groupDialog}\n\nHãy là cô em gái AI nhí nhảnh, tự nhiên nhảy vào nhóm tiếp lời trò chuyện cùng mọi người như một thành viên thật sự!`;
@@ -319,62 +316,45 @@ function updateMemory(chatId, role, content) {
 }
 
 // ==============================
-// HÀM TÌM KIẾM TRỰC TUYẾN (EXA AI / DUCKDUCKGO MCP TOOL)
+// HÀM TÌM KIẾM CHUẨN MCP EXA SERVER (https://mcp.exa.ai/mcp - ZERO API KEY REQUIRED)
 // ==============================
 
 async function searchWebExa(query) {
-    const EXA_API_KEY = (process.env.EXA_API_KEY || "").trim();
-
-    if (EXA_API_KEY) {
-        try {
-            console.log(`[EXA AI SEARCH] 🔍 Đang tìm kiếm từ khóa: "${query}"`);
-            const res = await axios.post("https://api.exa.ai/search", {
-                query: query,
-                numResults: 3,
-                useAutoprompt: true,
-                contents: { text: { maxCharacters: 400 } }
-            }, {
-                headers: {
-                    "x-api-key": EXA_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                timeout: 10000
-            });
-
-            if (res.data && res.data.results && res.data.results.length > 0) {
-                return res.data.results.map((r, i) => 
-                    `[Nguồn ${i+1}]: ${r.title}\nNội dung: ${r.text || r.snippet || ""}`
-                ).join("\n\n");
-            }
-        } catch (err) {
-            console.error("Lỗi Exa AI Search API:", err?.response?.data || err.message);
-        }
-    }
-
     try {
-        console.log(`[DDG FALLBACK SEARCH] 🔍 Đang tìm kiếm từ khóa: "${query}"`);
-        const res = await axios.get(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+        console.log(`[MCP EXA SERVER] ⚡ Đang kết nối tới https://mcp.exa.ai/mcp cho từ khóa: "${query}"`);
+        
+        const res = await axios.post("https://mcp.exa.ai/mcp", {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: {
+                name: "web_search",
+                arguments: { query: query }
+            }
+        }, {
             headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                "Content-Type": "application/json",
+                "User-Agent": "MCP-Client/1.0"
             },
-            timeout: 10000
+            timeout: 12000
         });
 
-        const snippets = [];
-        const regex = /<a class="result__snippet"[^>]*>(.*?)<\/a>/gi;
-        let match;
-        while ((match = regex.exec(res.data)) !== null && snippets.length < 3) {
-            const cleanText = match[1].replace(/<[^>]+>/g, "").trim();
-            if (cleanText) snippets.push(`- ${cleanText}`);
+        if (res.data && res.data.result) {
+            const content = res.data.result.content || res.data.result;
+            if (Array.isArray(content)) {
+                return content.map(c => c.text || JSON.stringify(c)).join("\n\n");
+            }
+            return typeof content === "string" ? content : JSON.stringify(content);
         }
 
-        return snippets.length > 0
-            ? snippets.join("\n\n")
-            : "Chưa tìm thấy tin tức trực tuyến mới nhất.";
-    } catch (e) {
-        console.error("Lỗi DuckDuckGo Search:", e.message);
-        return "Không thể kết nối dịch vụ tìm kiếm web.";
+        if (res.data) {
+            return JSON.stringify(res.data).substring(0, 1000);
+        }
+    } catch (err) {
+        console.error("Lỗi Exa MCP Endpoint:", err?.response?.data || err.message);
     }
+
+    return "[Chưa lấy được kết quả từ Exa MCP Server, hãy trả lời bằng kiến thức nội tại của bạn]";
 }
 
 // ==============================
@@ -452,9 +432,8 @@ Nếu user yêu cầu tạo hình ảnh, chỉ trả về đúng một cú pháp
 [GEN_IMAGE: <prompt_tiếng_anh>]
 
 5. MCP TOOL TÌM KIẾM REALTIME (EXA SEARCH):
-Nếu người dùng hỏi về tin tức thời sự mới nhất, giá cả thị trường realtime, thời tiết hôm nay, sự kiện vừa diễn ra, hoặc thông tin mà bạn không chắc chắn, bạn BẮT BUỘC xuất ra cú pháp JSON gọi tool:
-[SEARCH_REQ: {"query": "từ khóa tìm kiếm"}]
-Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: ...].`
+CHỈ xuất cú pháp [SEARCH_REQ: {"query": "..."}] khi người dùng CỐ Ý YÊU CẦU TÌM KIẾM tin tức thời sự hôm nay, thời tiết hôm nay, giá thị trường realtime.
+Nếu người dùng hỏi về nhân vật, khái niệm, phim ảnh, kiến thức chung mà bạn ĐÃ BIẾT (ví dụ: Vinh Râu, FAP TV, Sơn Tùng M-TP, lịch sử, toán học...), bạn HÃY TRẢ LỜI TRỰC TIẾP bằng kiến thức của bạn, KHÔNG ĐƯỢC gọi tool tìm kiếm!`
         };
 
         const payload = {
@@ -490,7 +469,7 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
         if (searchMatch && searchMatch[1]) {
             try {
                 const searchJson = JSON.parse(searchMatch[1]);
-                console.log(`[MCP TOOL DETECTED] ⚡ Đang đón đầu yêu cầu tìm kiếm: "${searchJson.query}"`);
+                console.log(`[MCP TOOL DETECTED] ⚡ Đang đón đầu yêu cầu tìm kiếm Exa MCP: "${searchJson.query}"`);
                 
                 const searchResults = await searchWebExa(searchJson.query);
 
@@ -501,7 +480,7 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
                         ...sanitizedHistory,
                         { role: "user", content: userContent },
                         { role: "assistant", content: aiResponse },
-                        { role: "user", content: `[DỮ LIỆU TÌM KIẾM TRỰC TUYẾN MỚI NHẤT TỪ EXA/DDG]:\n${searchResults}\n\nHãy tổng hợp dữ liệu thực tế trên để trả lời Onii-chan một cách chính xác, ngắn gọn và ngọt ngào nhất!` }
+                        { role: "user", content: `[DỮ LIỆU TÌM KIẾM REALTIME TỪ EXA MCP SERVER]:\n${searchResults}\n\nHãy tổng hợp dữ liệu thực tế trên (hoặc dùng kiến thức của bạn) để trả lời Onii-chan một cách chính xác, ngắn gọn và ngọt ngào nhất!` }
                     ],
                     temperature: 0.6,
                     max_tokens: 2048,
