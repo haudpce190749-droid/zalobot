@@ -83,9 +83,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (6-Min Timeout Patient Wait)</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Direct MP3 Link Active)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Patient Wait Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Direct Link Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -299,7 +299,7 @@ async function generateMusicPayloadWithGroq(userTopic) {
                 {
                     role: "system",
                     content: `Bạn là Music Producer AI chuyên nghiệp.
-Nhiệm vụ của bạn là lấy bất kỳ yêu cầu nhạc nào của người dùng và sáng tác ra một bài hát Tiếng Việt theo ĐÚNG định dạng 2 phần sau:
+Nhiệm vụ của bạn là lấy bất kỳ yêu cầu nhạc nào của người dùng và sáng tác ra một bài hát Tiếng Việt NGẮN GỌN (8-10 câu) theo ĐÚNG định dạng 2 phần sau:
 
 [PROMPT]
 vpop, upbeat, female vocal, acoustic guitar, catchy
@@ -314,10 +314,10 @@ Nụ cười rạng rỡ trao nhau người ơi`
                 },
                 {
                     role: "user",
-                    content: `Sáng tác lời bài hát Tiếng Việt theo yêu cầu: "${userTopic}"`
+                    content: `Sáng tác bài hát Tiếng Việt ngắn gọn theo yêu cầu: "${userTopic}"`
                 }
             ],
-            max_tokens: 800,
+            max_tokens: 450,
             temperature: 0.7
         };
 
@@ -345,6 +345,10 @@ Nụ cười rạng rỡ trao nhau người ơi`
 
         if (!lyrics || lyrics.trim() === "" || lyrics.length < 10) {
             lyrics = `[Verse 1]\nNắng lên phố rạng ngời em bước qua\nGiai điệu ngọt ngào dịu dàng trong tim ta\n\n[Chorus]\nHát cùng em câu ca đón ngày mới\nNụ cười rạng rỡ trao nhau người ơi`;
+        }
+
+        if (lyrics.length > 700) {
+            lyrics = lyrics.substring(0, 700).trim() + "\n...";
         }
 
         console.log(`[PRODUCER OUTPUT] 📝 Prompt: "${prompt}" | Lyrics length: ${lyrics.length} chars`);
@@ -823,22 +827,23 @@ async function getUpdates() {
 
                     if (isMusicCommand) {
                         const rawTopic = cleanText.replace(/^(tạo nhạc|sáng tác nhạc|tạo bài hát|tạo 1 bài nhạc|tạo một bài nhạc)\s*/i, "").trim();
-                        await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ Groq AI soạn Lời Tiếng Việt và ACE Cloud đang cất giọng hát nè... ✨");
+                        await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ Groq AI soạn Lời và ACE Cloud đang cất giọng hát nè... ✨");
                         
-                        // 1. Groq AI tự động thiết kế Tag tiếng Anh & Sáng tác Lời Tiếng Việt chuẩn
+                        // 1. Sáng tác Lời Tiếng Việt ngắn gọn
                         const musicData = await generateMusicPayloadWithGroq(rawTopic || cleanText);
                         
-                        // 2. Gửi Lời Bài Hát trước qua tin nhắn Zalo chuẩn (100% nhận tức thì)
-                        await sendMessage(chatId, `📝 Lời bài hát vừa sáng tác cho Onii-chan:\n\n${musicData.lyrics}`);
+                        // 2. Gửi Lời Bài Hát trước qua tin nhắn Zalo
+                        await sendMessage(chatId, `📝 Lời bài hát em vừa sáng tác cho Onii-chan:\n\n${musicData.lyrics}`);
 
-                        // 3. Gửi Tag tiếng Anh + Lời Tiếng Việt chuẩn sang ACE Cloud API để hát
+                        // 3. Render nhạc trên ACE Cloud
                         const mp3Url = await generateAceMusic(musicData.prompt, musicData.lyrics);
                         
                         if (mp3Url) {
-                            await sendAudio(chatId, mp3Url, `🎶 Bản nhạc MP3 của Onii-chan đây ạ! (Phong cách: ${musicData.prompt})`);
-                            addLog(chatId, userQuestion, `[Gửi file nhạc MP3 ACE Music: ${mp3Url}]`);
+                            // Gửi TRỰC TIẾP link MP3 qua tin nhắn Text (Zalo tự động có preview phát nhạc!)
+                            await sendMessage(chatId, `🎶 Bài hát MP3 của Onii-chan đây ạ! (Phong cách: ${musicData.prompt})\n\n🎵 Link nghe/tải MP3: ${mp3Url}`);
+                            addLog(chatId, userQuestion, `[Gửi Link MP3 Zalo: ${mp3Url}]`);
                         } else {
-                            await sendMessage(chatId, `*(Dạ Onii-chan ơi, Siêu máy chủ ACE Cloud đang bận/quá tải chưa kịp gửi file audio về, em đã gửi trước lời bài hát tuyệt đẹp này cho Onii-chan rồi nè! 🌸)*`);
+                            await sendMessage(chatId, `*(Dạ Onii-chan ơi, Siêu máy chủ ACE Cloud đang bận/quá tải chưa kịp gửi nhạc về, em đã gửi trước lời bài hát tuyệt đẹp này cho Onii-chan rồi nè! 🌸)*`);
                             addLog(chatId, userQuestion, "[Sáng tác lời bài hát thành công]");
                         }
                     }
@@ -872,7 +877,7 @@ async function getUpdates() {
                             await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ ACE Music AI (ACE Step 1.5) sáng tác bài hát nè... ✨");
                             const mp3Url = await generateAceMusic(songPrompt);
                             if (mp3Url) {
-                                await sendAudio(chatId, mp3Url, `🎶 Bài hát sáng tác theo yêu cầu của Onii-chan đây ạ: "${songPrompt}"`);
+                                await sendMessage(chatId, `🎶 Bài hát MP3 của Onii-chan đây ạ: ${songPrompt}\n\n🎵 Link MP3: ${mp3Url}`);
                             } else {
                                 await sendMessage(chatId, `📝 Lời bài hát em sáng tác cho Onii-chan:\n\n${songPrompt}`);
                             }
