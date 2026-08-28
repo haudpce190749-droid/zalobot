@@ -83,9 +83,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (3-Layer Audio Active)</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Regex Parser Active)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Multi-Layer Delivery Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Regex Producer Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -307,10 +307,18 @@ async function generateMusicPayloadWithGroq(userTopic) {
                 {
                     role: "system",
                     content: `Bạn là Music Producer AI chuyên nghiệp.
-Nhiệm vụ của bạn là lấy yêu cầu của người dùng và tạo ra một định dạng JSON gồm 2 trường:
-1. "prompt": Dịch thể loại/cảm xúc nhạc cụ sang các tag tiếng Anh (vd: vpop, upbeat, female vocal, acoustic guitar, catchy).
-2. "lyrics": Hãy sáng tác bài hát TIẾNG VIỆT cực kỳ cảm xúc, gieo vần chuẩn, với cấu trúc chuẩn: [Verse 1], [Chorus], [Verse 2], [Chorus], [Outro]. Chỉ trả về lời bài hát thuần túy cùng các thẻ [Verse], [Chorus]. TUYỆT ĐỐI KHÔNG chèn câu chào hay giải thích.
-CHỈ trả về ĐÚNG MỘT JSON hợp lệ.`
+Nhiệm vụ của bạn là nhận yêu cầu của người dùng và xuất ra đúng định dạng text đơn giản sau:
+
+PROMPT: <dịch thể loại/cảm xúc nhạc cụ sang các tag tiếng Anh như: vpop, upbeat, female vocal, acoustic guitar, catchy>
+LYRICS:
+[Verse 1]
+...
+[Chorus]
+...
+[Outro]
+...
+
+Hãy sáng tác lời bài hát TIẾNG VIỆT ngọt ngào, gieo vần chuẩn.`
                 },
                 {
                     role: "user",
@@ -327,13 +335,23 @@ CHỈ trả về ĐÚNG MỘT JSON hợp lệ.`
         });
 
         const raw = res.data?.choices?.[0]?.message?.content || "";
-        const cleanJson = raw.trim().replace(/```json/gi, "").replace(/```/gi, "");
-        const parsed = JSON.parse(cleanJson);
 
-        return {
-            prompt: parsed.prompt || "vpop, upbeat, female vocal",
-            lyrics: parsed.lyrics || ""
-        };
+        let prompt = "vpop, upbeat, female vocal";
+        let lyrics = "";
+
+        const promptMatch = raw.match(/PROMPT:\s*(.*?)(?=\n|LYRICS:|$)/i);
+        if (promptMatch && promptMatch[1]) {
+            prompt = promptMatch[1].trim();
+        }
+
+        const lyricsMatch = raw.match(/LYRICS:\s*([\s\S]*)/i);
+        if (lyricsMatch && lyricsMatch[1]) {
+            lyrics = lyricsMatch[1].trim();
+        } else if (!raw.includes("PROMPT:")) {
+            lyrics = raw.trim();
+        }
+
+        return { prompt, lyrics };
 
     } catch (e) {
         console.error("Lỗi Groq Music Producer:", e.message);
