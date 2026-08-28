@@ -33,10 +33,28 @@ function addLog(chatId, userQuestion, aiResponse) {
     if (chatLogs.length > 50) chatLogs.pop();
 }
 
+const audioStore = new Map();
+
 http.createServer((req, res) => {
     if (req.url === "/api/logs") {
         res.writeHead(200, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ total: totalMessageCount, logs: chatLogs }));
+    }
+
+    if (req.url.startsWith("/audio/")) {
+        const audioId = req.url.replace("/audio/", "").replace(".mp3", "");
+        const audioBuf = audioStore.get(audioId);
+        if (audioBuf) {
+            res.writeHead(200, {
+                "Content-Type": "audio/mpeg",
+                "Content-Length": audioBuf.length,
+                "Accept-Ranges": "bytes"
+            });
+            return res.end(audioBuf);
+        } else {
+            res.writeHead(404, { "Content-Type": "text/plain" });
+            return res.end("Audio file not found");
+        }
     }
 
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -65,9 +83,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Chuẩn Puchibot 100% Tested)</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Live Audio Host Active)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (ACE Cloud Turbo Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Audio Host Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -327,7 +345,22 @@ async function generateAceMusic(promptStyle, lyricsText = "") {
         if (audioArr && audioArr.length > 0) {
             const rawAudioUrl = audioArr[0]?.audio_url?.url || audioArr[0]?.url;
             if (rawAudioUrl) {
-                console.log(`[ACE MUSIC CLOUD SUCCESS] 🎶 Đã tạo xong file MP3 thành công!`);
+                console.log(`[ACE MUSIC CLOUD SUCCESS] 🎶 Đã tạo xong nhạc MP3!`);
+                if (rawAudioUrl.startsWith("data:audio")) {
+                    const base64Data = rawAudioUrl.split(",")[1];
+                    const buffer = Buffer.from(base64Data, "base64");
+                    const songId = `song_${Date.now()}`;
+                    audioStore.set(songId, buffer);
+                    
+                    if (audioStore.size > 10) {
+                        const firstKey = audioStore.keys().next().value;
+                        audioStore.delete(firstKey);
+                    }
+                    
+                    const publicAudioUrl = `${RENDER_URL}/audio/${songId}.mp3`;
+                    console.log(`[AUDIO SERVER] 🌐 Đã cấp link MP3 công khai cho Zalo: ${publicAudioUrl}`);
+                    return publicAudioUrl;
+                }
                 return rawAudioUrl;
             }
         }
