@@ -67,7 +67,7 @@ http.createServer((req, res) => {
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
                 <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Music AI (ACE Step 1.5)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (ACE Music Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (ACE Music API Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -261,47 +261,41 @@ async function generateAceMusic(promptText) {
     const ACE_API_KEY = (process.env.ACE_API_KEY || "31fb983fc1634086b981d3f75befee34").trim();
     const ACE_BASE_URL = (process.env.ACE_BASE_URL || "https://api.acemusic.ai").trim();
 
+    const headers = {
+        "Authorization": `Bearer ${ACE_API_KEY}`,
+        "x-api-key": ACE_API_KEY,
+        "Content-Type": "application/json"
+    };
+
+    const payload = {
+        prompt: promptText,
+        task_type: "text2music",
+        model: "ace-step-1.5"
+    };
+
+    // Endpoint 1: /v1/generate
     try {
         console.log(`[ACE MUSIC AI] 🎵 Đang sáng tạo bài hát qua ACE Step 1.5: "${promptText}"`);
-        
-        // 1. Thử Endpoint 1: /v1/audio/generations
-        const res = await axios.post(`${ACE_BASE_URL}/v1/audio/generations`, {
-            prompt: promptText,
-            model: "ace-step-1.5"
-        }, {
-            headers: {
-                "Authorization": `Bearer ${ACE_API_KEY}`,
-                "x-api-key": ACE_API_KEY,
-                "Content-Type": "application/json"
-            },
-            timeout: 60000
-        });
-
+        const res = await axios.post(`${ACE_BASE_URL}/v1/generate`, payload, { headers, timeout: 60000 });
         const audioUrl = res.data?.audio_url || res.data?.url || res.data?.data?.[0]?.url || res.data?.result?.audio_url;
         if (audioUrl) return audioUrl;
-
     } catch (err) {
-        console.error("Lỗi ACE Music API (Endpoint 1):", err?.response?.data || err.message);
+        console.error("Lỗi ACE Music API (/v1/generate):", err?.response?.data || err.message);
     }
 
-    // 2. Fallback Endpoint 2: /api/generate
+    // Endpoint 2: /v1/audio/generations
     try {
-        const res2 = await axios.post(`${ACE_BASE_URL}/api/generate`, {
-            prompt: promptText,
-            model: "ace-step-1.5"
-        }, {
-            headers: {
-                "Authorization": `Bearer ${ACE_API_KEY}`,
-                "x-api-key": ACE_API_KEY,
-                "Content-Type": "application/json"
-            },
-            timeout: 60000
-        });
-        const audioUrl2 = res2.data?.audio_url || res2.data?.url || res2.data?.data?.audio_url;
+        const res2 = await axios.post(`${ACE_BASE_URL}/v1/audio/generations`, payload, { headers, timeout: 60000 });
+        const audioUrl2 = res2.data?.audio_url || res2.data?.url || res2.data?.data?.[0]?.url || res2.data?.result?.audio_url;
         if (audioUrl2) return audioUrl2;
-    } catch (e2) {
-        console.error("Lỗi ACE Music API (Endpoint 2):", e2?.response?.data || e2.message);
-    }
+    } catch (e2) {}
+
+    // Endpoint 3: /api/generate
+    try {
+        const res3 = await axios.post(`${ACE_BASE_URL}/api/generate`, payload, { headers, timeout: 60000 });
+        const audioUrl3 = res3.data?.audio_url || res3.data?.url || res3.data?.data?.audio_url;
+        if (audioUrl3) return audioUrl3;
+    } catch (e3) {}
 
     return null;
 }
