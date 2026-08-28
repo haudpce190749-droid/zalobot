@@ -65,9 +65,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | MCP Exa Search Engine</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | True Group Member Mode</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (MCP Exa Search Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Realtime Member Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -86,7 +86,7 @@ http.createServer((req, res) => {
             <div class="col-md-4">
                 <div class="card p-3 shadow-sm">
                     <span class="text-secondary small fw-bold">CƠ CHẾ CHỐNG NGỦ</span>
-                    <h3 class="text-warning fw-bold m-0 mt-2">Tự động Ping 5p/lần</h3>
+                    <h3 class="text-warning fw-bold m-0 mt-2">Tự động Ping 5p/lần (Ngầm)</h3>
                 </div>
             </div>
         </div>
@@ -132,26 +132,41 @@ http.createServer((req, res) => {
     console.log(`HTTP Server listening on port ${PORT}`);
 });
 
-// Tự động ping Render mỗi 5 phút để giữ Server không bao giờ ngủ
+// Tự động ping Render mỗi 5 phút để giữ Server 24/7 không bao giờ ngủ (Ngầm)
 setInterval(() => {
     axios.get(RENDER_URL).catch(() => {});
 }, 5 * 60 * 1000);
 
-// Cứ mỗi 30 phút: Bot tự đọc tin nhắn gần nhất trên Zalo và CHỦ ĐỘNG GỬI TIN NHẮN TRÒ CHUYỆN LÊN ZALO!
+// Cứ mỗi 15-20 phút: Đóng vai 1 THÀNH VIÊN NHÓM THẬT SỰ - Kiểm tra xem mọi người trong nhóm có nhắn tin mới với nhau không.
+// Nếu CÓ người nhắn trong nhóm ➔ Bot đọc tin nhắn thật đó và nhảy vào rep! 
+// Nếu KHÔNG có ai nhắn ➔ Bot im lặng 100%, tuyệt đối không nhắn linh tinh!
 setInterval(async () => {
     try {
-        if (chatLogs.length > 0) {
-            const lastLog = chatLogs[0];
-            const prompt = `Đây là câu hỏi/chủ đề gần nhất của Onii-chan trên Zalo: "${lastLog.user}". Hãy viết 1 câu ngắn gọn, ngọt ngào, hóm hỉnh hỏi thăm hoặc tiếp nối chủ đề này với Onii-chan.`;
-            const aiResponse = await askAI(lastLog.chatId, prompt);
-            if (aiResponse) {
-                await sendMessage(lastLog.chatId, aiResponse);
-                addLog(lastLog.chatId, "[TỰ ĐỘNG KHỜI XƯỚNG 30P] " + lastLog.user, aiResponse);
-                console.log(`[PROACTIVE 30P LOG] 🟢 Đã tự động trò chuyện lên Zalo tiếp nối chủ đề: "${lastLog.user}"`);
+        const now = Date.now();
+        for (const [chatId, buffer] of groupBuffer.entries()) {
+            if (!buffer || buffer.length === 0) continue;
+
+            const lastMsgTime = buffer[buffer.length - 1].time;
+            const lastReply = lastBotReplyTime.get(chatId) || 0;
+
+            // Nếu trong 20 phút qua CÓ tin nhắn mới của các thành viên trong nhóm và Bot chưa rep
+            if ((now - lastMsgTime < 20 * 60 * 1000) && (now - lastReply > 15 * 60 * 1000)) {
+                const groupDialog = buffer.map(b => `${b.sender}: "${b.text}"`).join("\n");
+                const prompt = `Dưới đây là các tin nhắn thực tế vừa diễn ra giữa mọi người trong nhóm Zalo:\n${groupDialog}\n\nHãy là cô em gái AI nhí nhảnh, tự nhiên nhảy vào nhóm tiếp lời trò chuyện cùng mọi người như một thành viên thật sự!`;
+
+                const aiResponse = await askAI(chatId, prompt);
+                if (aiResponse) {
+                    await sendMessage(chatId, aiResponse);
+                    lastBotReplyTime.set(chatId, now);
+                    addLog(chatId, "[THÀNH VIÊN NHÓM JUMP-IN]", aiResponse);
+                    console.log(`[GROUP MEMBER JUMP-IN] 🟢 Đã đọc tin nhắn mới trong nhóm và xen vào trò chuyện!`);
+                }
             }
         }
-    } catch (e) {}
-}, 30 * 60 * 1000);
+    } catch (e) {
+        console.error("Lỗi Group Member Loop:", e.message);
+    }
+}, 15 * 60 * 1000);
 
 const ZALO_BOT_TOKEN = (process.env.ZALO_BOT_TOKEN || "").trim();
 const BASE_URL = `https://bot-api.zaloplatforms.com/bot${ZALO_BOT_TOKEN}`;
@@ -310,7 +325,6 @@ function updateMemory(chatId, role, content) {
 async function searchWebExa(query) {
     const EXA_API_KEY = (process.env.EXA_API_KEY || "").trim();
 
-    // 1. Nếu có EXA_API_KEY -> Gọi Exa AI Search API chính chủ
     if (EXA_API_KEY) {
         try {
             console.log(`[EXA AI SEARCH] 🔍 Đang tìm kiếm từ khóa: "${query}"`);
@@ -337,7 +351,6 @@ async function searchWebExa(query) {
         }
     }
 
-    // 2. Fallback tự động nếu chưa nạp EXA_API_KEY -> Gọi DuckDuckGo HTML Search miễn phí
     try {
         console.log(`[DDG FALLBACK SEARCH] 🔍 Đang tìm kiếm từ khóa: "${query}"`);
         const res = await axios.get(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
@@ -473,19 +486,14 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
 
         let aiResponse = response.data.choices[0].message.content;
 
-        // ========================================================
-        // MCP TOOL INTERCEPTION (ĐÓN ĐẦU JSON TÌM KIẾM WEB)
-        // ========================================================
         const searchMatch = aiResponse.match(/\[SEARCH_REQ:\s*(\{.*?\})\]/s);
         if (searchMatch && searchMatch[1]) {
             try {
                 const searchJson = JSON.parse(searchMatch[1]);
                 console.log(`[MCP TOOL DETECTED] ⚡ Đang đón đầu yêu cầu tìm kiếm: "${searchJson.query}"`);
                 
-                // Gọi Exa AI / DDG Search lấy thông tin thực tế
                 const searchResults = await searchWebExa(searchJson.query);
 
-                // Pass 2: Gửi thông tin Web realtime lại cho Groq AI để tóm tắt
                 const pass2Payload = {
                     model: selectedModel,
                     messages: [
@@ -539,7 +547,7 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
 }
 
 // ==============================
-// NHẬN TIN NHẮN ZALO
+// NHẬN TIN NHẮN ZALO REALTIME
 // ==============================
 
 async function getUpdates() {
@@ -621,7 +629,7 @@ async function getUpdates() {
                         let promptToPass = userQuestion;
                         if (isGroupJumpIn && !textLower.includes("bot")) {
                             const recentDialog = gBuf.map(b => `${b.sender}: "${b.text}"`).join("\n");
-                            promptToPass = `Dưới đây là đoạn trò chuyện gần đây giữa các thành viên trong nhóm Zalo:\n${recentDialog}\n\nHãy là cô em gái AI nhí nhảnh, tự nhiên xen vào cuộc trò chuyện (jump in), đưa ra gợi ý/đề xuất địa điểm hoặc ý kiến vui vẻ, hữu ích tiếp lời mọi người!`;
+                            promptToPass = `Dưới đây là các tin nhắn vừa diễn ra giữa các thành viên trong nhóm Zalo:\n${recentDialog}\n\nHãy là cô em gái AI nhí nhảnh, tự nhiên nhảy vào cuộc trò chuyện (jump in), đưa ra gợi ý/đề xuất địa điểm hoặc ý kiến vui vẻ, hữu ích tiếp lời mọi người!`;
                         }
 
                         const aiResponse = hasImage
