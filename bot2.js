@@ -323,7 +323,6 @@ async function searchWebExa(query) {
     try {
         console.log(`[MCP EXA SERVER] ⚡ Đang gửi lệnh web_search_exa tới https://mcp.exa.ai/mcp cho từ khóa: "${query}"`);
         
-        // Kết nối chuẩn giao thức MCP Streamable HTTP JSON-RPC 2.0
         const res = await axios.post("https://mcp.exa.ai/mcp", {
             jsonrpc: "2.0",
             id: 1,
@@ -443,7 +442,7 @@ Nếu user yêu cầu tạo hình ảnh, chỉ trả về đúng một cú pháp
 [GEN_IMAGE: <prompt_tiếng_anh>]
 
 5. BẮT BUỘC SỬ DỤNG MCP EXA SEARCH ENGINE KHI TRA CỨU:
-Vì dữ liệu của model AI đã cũ, BẮT BUỘC xuất ra cú pháp JSON gọi MCP Exa Tool đối với BẤT KỲ CÂU HỎI NÀO liên quan đến tra cứu thông tin, tìm hiểu người nổi tiếng (ca sĩ, diễn viên, KOL, doanh nhân...), tin tức thời sự, sự kiện, thời tiết, giá thị trường, hoặc câu hỏi có vẻ cần cập nhật thông tin:
+Vì dữ liệu của model AI đã cũ, BẮT BUỘC xuất ra cú pháp JSON gọi MCP Exa Tool đối với BẮT KY CÂU HỎI NÀO liên quan đến tra cứu thông tin, tìm hiểu người nổi tiếng (ca sĩ, diễn viên, KOL, doanh nhân...), tin tức thời sự, sự kiện, thời tiết, giá thị trường, hoặc câu hỏi có vẻ cần cập nhật thông tin:
 [SEARCH_REQ: {"query": "từ khóa tìm kiếm chi tiết"}]
 Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: ...]. Tuyệt đối không tự trả lời mò bằng kiến thức cũ khi chưa có dữ liệu MCP Search!`
         };
@@ -515,6 +514,16 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
 
             } catch (errParse) {
                 console.error("Lỗi xử lý MCP Search Tool:", errParse.message);
+            }
+        }
+
+        // ========================================================
+        // AN TOÀN: BỘ LỌC KHÔNG ĐỂ LỌT CHUỖI THÔ [SEARCH_REQ: ...] NỐI LÊN ZALO
+        // ========================================================
+        if (aiResponse.includes("[SEARCH_REQ:")) {
+            aiResponse = aiResponse.replace(/\[SEARCH_REQ:\s*\{.*?\}\]/gs, "").trim();
+            if (!aiResponse) {
+                aiResponse = "Dạ Onii-chan ơi, em đang tóm tắt dữ liệu tin tức mới nhất vừa tìm kiếm, Onii-chan chờ em xíu nhé! ✨";
             }
         }
 
