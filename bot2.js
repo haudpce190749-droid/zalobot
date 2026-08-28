@@ -511,9 +511,9 @@ BẮT BUỘC sử dụng Markdown để trình bày câu trả lời rõ ràng, 
 3. KIẾN THỨC:
 Dù mang giọng điệu em gái nhí nhảnh nhưng phân tích kiến thức và thông tin giải đáp phải chuẩn xác 100%.
 
-4. HÌNH ẢNH:
-Nếu user yêu cầu tạo hình ảnh, chỉ trả về đúng một cú pháp:
-[GEN_IMAGE: <prompt_tiếng_anh>]
+4. HÌNH ẢNH VA NHẠC:
+- Nếu user yêu cầu tạo hình ảnh, chỉ trả về đúng một cú pháp: [GEN_IMAGE: <prompt_tiếng_anh>]
+- Nếu user yêu cầu sáng tác nhạc, chỉ trả về đúng một cú pháp: [GEN_MUSIC: <mô_tả_bài_hát>]
 
 5. BẮT BUỘC SỬ DỤNG MCP EXA SEARCH ENGINE KHI TRA CỨU:
 Vì dữ liệu của model AI đã cũ, BẮT BUỘC xuất ra cú pháp JSON gọi MCP Exa Tool đối với BẮT KỲ CÂU HỎI NÀO liên quan đến tra cứu thông tin, tìm hiểu người nổi tiếng (ca sĩ, diễn viên, KOL, doanh nhân...), tin tức thời sự, sự kiện, thời tiết, giá thị trường, hoặc câu hỏi có vẻ cần cập nhật thông tin:
@@ -693,15 +693,24 @@ async function getUpdates() {
                         );
                     }
 
-                    else if (textLower.startsWith("tạo nhạc") || textLower.startsWith("sáng tác nhạc") || textLower.startsWith("tạo bài hát")) {
-                        const promptSong = userQuestion.replace(/^(tạo nhạc|sáng tác nhạc|tạo bài hát)\s*/i, "").trim();
+                    const cleanText = textLower.replace(/^@?(bot say gex|bot)\s*/gi, "").trim();
+                    const isMusicCommand = cleanText.startsWith("tạo nhạc") || 
+                                           cleanText.startsWith("sáng tác nhạc") || 
+                                           cleanText.startsWith("tạo bài hát") || 
+                                           cleanText.startsWith("tạo 1 bài nhạc") ||
+                                           cleanText.startsWith("tạo một bài nhạc") ||
+                                           cleanText.includes("tạo bài nhạc") ||
+                                           cleanText.includes("sáng tác bài nhạc");
+
+                    if (isMusicCommand) {
+                        const promptSong = cleanText.replace(/^(tạo nhạc|sáng tác nhạc|tạo bài hát|tạo 1 bài nhạc|tạo một bài nhạc)\s*/i, "").trim();
                         await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ ACE Music AI (ACE Step 1.5) sáng tác bài hát nè... ✨");
-                        const mp3Url = await generateAceMusic(promptSong || userQuestion);
+                        const mp3Url = await generateAceMusic(promptSong || cleanText);
                         if (mp3Url) {
-                            await sendAudio(chatId, mp3Url, `🎶 Bài hát sáng tác theo yêu cầu của Onii-chan đây ạ: "${promptSong || userQuestion}"`);
+                            await sendAudio(chatId, mp3Url, `🎶 Bài hát sáng tác theo yêu cầu của Onii-chan đây ạ: "${promptSong || cleanText}"`);
                             addLog(chatId, userQuestion, `[Gửi file nhạc MP3 ACE Music: ${mp3Url}]`);
                         } else {
-                            await sendMessage(chatId, `🎶 Em chưa tải được file MP3 trực tiếp từ server ACE Music, Onii-chan bấm vào đây nghe thử bài hát nhé: https://acemusic.ai/search?q=${encodeURIComponent(promptSong || userQuestion)} ✨`);
+                            await sendMessage(chatId, `🎶 Em chưa tải được file MP3 trực tiếp từ server ACE Music, Onii-chan bấm vào đây nghe thử bài hát nhé: https://acemusic.ai/search?q=${encodeURIComponent(promptSong || cleanText)} ✨`);
                             addLog(chatId, userQuestion, "[Kết nối ACE Music AI]");
                         }
                     }
@@ -729,7 +738,18 @@ async function getUpdates() {
                         const imgMatch = aiResponse.match(/\[GEN_IMAGE:\s*(.*?)\]/i);
                         const isDrawCommand = textLower.startsWith("vẽ") || textLower.includes("vẽ ") || textLower.includes("tạo ảnh") || textLower.includes("tạo hình");
 
-                        if ((imgMatch && imgMatch[1]) || isDrawCommand) {
+                        const musicMatch = aiResponse.match(/\[GEN_MUSIC:\s*(.*?)\]/i);
+                        if (musicMatch && musicMatch[1]) {
+                            const songPrompt = musicMatch[1].trim();
+                            await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ ACE Music AI (ACE Step 1.5) sáng tác bài hát nè... ✨");
+                            const mp3Url = await generateAceMusic(songPrompt);
+                            if (mp3Url) {
+                                await sendAudio(chatId, mp3Url, `🎶 Bài hát sáng tác theo yêu cầu của Onii-chan đây ạ: "${songPrompt}"`);
+                            } else {
+                                await sendMessage(chatId, `🎶 Em chưa tải được file MP3 trực tiếp từ server ACE Music, Onii-chan bấm vào đây nghe thử bài hát nhé: https://acemusic.ai/search?q=${encodeURIComponent(songPrompt)} ✨`);
+                            }
+                        }
+                        else if ((imgMatch && imgMatch[1]) || isDrawCommand) {
 
                             const rawPrompt = (imgMatch && imgMatch[1])
                                 ? imgMatch[1].trim()
