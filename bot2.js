@@ -65,9 +65,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Mandatory Exa MCP Search</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP Streamable HTTP</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Exa MCP Mandatory)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Exa MCP Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -321,40 +321,51 @@ function updateMemory(chatId, role, content) {
 
 async function searchWebExa(query) {
     try {
-        console.log(`[MCP EXA SERVER] ⚡ Đang kết nối tới https://mcp.exa.ai/mcp cho từ khóa: "${query}"`);
+        console.log(`[MCP EXA SERVER] ⚡ Đang gửi lệnh web_search_exa tới https://mcp.exa.ai/mcp cho từ khóa: "${query}"`);
         
+        // Kết nối chuẩn giao thức MCP Streamable HTTP JSON-RPC 2.0
         const res = await axios.post("https://mcp.exa.ai/mcp", {
             jsonrpc: "2.0",
             id: 1,
             method: "tools/call",
             params: {
-                name: "web_search",
+                name: "web_search_exa",
                 arguments: { query: query }
             }
         }, {
             headers: {
                 "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
                 "User-Agent": "MCP-Client/1.0"
             },
-            timeout: 12000
+            timeout: 15000
         });
 
-        if (res.data && res.data.result) {
-            const content = res.data.result.content || res.data.result;
-            if (Array.isArray(content)) {
-                return content.map(c => c.text || JSON.stringify(c)).join("\n\n");
+        let rawData = res.data;
+        if (typeof rawData === "string") {
+            const lines = rawData.split("\n");
+            for (const line of lines) {
+                if (line.startsWith("data:")) {
+                    try {
+                        const parsed = JSON.parse(line.replace(/^data:\s*/, ""));
+                        const content = parsed?.result?.content;
+                        if (Array.isArray(content)) {
+                            return content.map(c => c.text || "").join("\n\n");
+                        }
+                    } catch (e) {}
+                }
             }
-            return typeof content === "string" ? content : JSON.stringify(content);
-        }
-
-        if (res.data) {
-            return JSON.stringify(res.data).substring(0, 1000);
+        } else if (rawData?.result?.content) {
+            const content = rawData.result.content;
+            if (Array.isArray(content)) {
+                return content.map(c => c.text || "").join("\n\n");
+            }
         }
     } catch (err) {
         console.error("Lỗi Exa MCP Endpoint:", err?.response?.data || err.message);
     }
 
-    return "[Chưa lấy được kết quả từ Exa MCP Server, hãy trả lời bằng kiến thức nội tại của bạn]";
+    return "[Chưa lấy được kết quả từ Exa MCP Server, hãy tự trả lời dựa trên kiến thức chính xác của bạn]";
 }
 
 // ==============================
@@ -481,7 +492,7 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
                         ...sanitizedHistory,
                         { role: "user", content: userContent },
                         { role: "assistant", content: aiResponse },
-                        { role: "user", content: `[DỮ LIỆU TÌM KIẾM REALTIME TỪ EXA MCP SERVER]:\n${searchResults}\n\nHãy tổng hợp dữ liệu thực tế vừa tìm kiếm trên để trả lời Onii-chan một cách chính xác, mới nhất và ngọt ngào nhất!` }
+                        { role: "user", content: `[DỮ LIỆU TÌM KIẾM TRỰC TUYẾN MỚI NHẤT VỪA TRA CỨU TỪ EXA MCP SERVER]:\n${searchResults}\n\nDựa vào dữ liệu thực tế vừa tìm kiếm được ở trên, hãy tổng hợp câu trả lời chính xác 100%, mới nhất và ngọt ngào cho Onii-chan! TUYỆT ĐỐI không bịa đặt hoặc vu khống!` }
                     ],
                     temperature: 0.6,
                     max_tokens: 2048,
