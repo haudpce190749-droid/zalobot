@@ -65,9 +65,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP Streamable HTTP</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Music AI (ACE Step 1.5)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Exa MCP Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (ACE Music Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -237,6 +237,76 @@ async function sendPhoto(chatId, photoUrl, caption) {
 }
 
 // ==============================
+// GỬI FILE ÂM THANH MP3 (AUDIO)
+// ==============================
+
+async function sendAudio(chatId, audioUrl, caption = "") {
+    try {
+        await axios.post(`${BASE_URL}/sendAudio`, {
+            chat_id: chatId,
+            audio: audioUrl,
+            caption: caption
+        });
+    } catch (error) {
+        console.error("Lỗi sendAudio Zalo:", error?.response?.data || error.message);
+        await sendMessage(chatId, `${caption}\n🎵 Bấm vào link để nghe file MP3: ${audioUrl}`);
+    }
+}
+
+// ==============================
+// TẠO NHẠC AI (ACE MUSIC AI / ACE STEP 1.5)
+// ==============================
+
+async function generateAceMusic(promptText) {
+    const ACE_API_KEY = (process.env.ACE_API_KEY || "31fb983fc1634086b981d3f75befee34").trim();
+    const ACE_BASE_URL = (process.env.ACE_BASE_URL || "https://api.acemusic.ai").trim();
+
+    try {
+        console.log(`[ACE MUSIC AI] 🎵 Đang sáng tạo bài hát qua ACE Step 1.5: "${promptText}"`);
+        
+        // 1. Thử Endpoint 1: /v1/audio/generations
+        const res = await axios.post(`${ACE_BASE_URL}/v1/audio/generations`, {
+            prompt: promptText,
+            model: "ace-step-1.5"
+        }, {
+            headers: {
+                "Authorization": `Bearer ${ACE_API_KEY}`,
+                "x-api-key": ACE_API_KEY,
+                "Content-Type": "application/json"
+            },
+            timeout: 60000
+        });
+
+        const audioUrl = res.data?.audio_url || res.data?.url || res.data?.data?.[0]?.url || res.data?.result?.audio_url;
+        if (audioUrl) return audioUrl;
+
+    } catch (err) {
+        console.error("Lỗi ACE Music API (Endpoint 1):", err?.response?.data || err.message);
+    }
+
+    // 2. Fallback Endpoint 2: /api/generate
+    try {
+        const res2 = await axios.post(`${ACE_BASE_URL}/api/generate`, {
+            prompt: promptText,
+            model: "ace-step-1.5"
+        }, {
+            headers: {
+                "Authorization": `Bearer ${ACE_API_KEY}`,
+                "x-api-key": ACE_API_KEY,
+                "Content-Type": "application/json"
+            },
+            timeout: 60000
+        });
+        const audioUrl2 = res2.data?.audio_url || res2.data?.url || res2.data?.data?.audio_url;
+        if (audioUrl2) return audioUrl2;
+    } catch (e2) {
+        console.error("Lỗi ACE Music API (Endpoint 2):", e2?.response?.data || e2.message);
+    }
+
+    return null;
+}
+
+// ==============================
 // TYPING INDICATOR
 // ==============================
 
@@ -365,7 +435,6 @@ async function searchWebExa(query) {
         }
 
         if (finalContent) {
-            // Giới hạn tối đa 2,500 ký tự để tránh lỗi Groq API HTTP 413 Payload Too Large
             if (finalContent.length > 2500) {
                 finalContent = finalContent.substring(0, 2500) + "\n\n[...Đã tối ưu độ dài dữ liệu search...]";
             }
@@ -495,7 +564,6 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
                 
                 const searchResults = await searchWebExa(searchJson.query);
 
-                // Pass 2: Gửi câu hỏi kèm dữ liệu thực tế từ Exa MCP cho Groq AI tổng hợp
                 const pass2Payload = {
                     model: selectedModel,
                     messages: [
@@ -532,9 +600,6 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
             }
         }
 
-        // ========================================================
-        // AN TOÀN: BỘ LỌC TỰ ĐỘNG KHÔNG ĐỂ LỌT LỆNH THÔ
-        // ========================================================
         if (aiResponse.includes("[SEARCH_REQ:")) {
             aiResponse = aiResponse.replace(/\[SEARCH_REQ:\s*\{.*?\}\]/gs, "").trim();
         }
@@ -626,13 +691,28 @@ async function getUpdates() {
                     if (textLower === "menu" || textLower === "@bot say gex menu") {
                         await sendMessage(
                             chatId,
-                            "📋 **MENU (GROQ GPT-OSS 120B)**\n\n" +
+                            "📋 **MENU (GROQ API SPEED)**\n\n" +
                             "♻️ `/reset` : Xoá trí nhớ\n" +
                             "📸 `Gửi ảnh` : Phân tích ảnh\n" +
-                            "🎨 `Vẽ ...` : Tạo ảnh"
+                            "🎨 `Vẽ ...` : Tạo ảnh\n" +
+                            "🎵 `Tạo nhạc ...` : Sáng tác bài hát MP3 qua ACE Music AI (Ace Step 1.5)"
                         );
-                    } else {
+                    }
 
+                    else if (textLower.startsWith("tạo nhạc") || textLower.startsWith("sáng tác nhạc") || textLower.startsWith("tạo bài hát")) {
+                        const promptSong = userQuestion.replace(/^(tạo nhạc|sáng tác nhạc|tạo bài hát)\s*/i, "").trim();
+                        await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ ACE Music AI (ACE Step 1.5) sáng tác bài hát nè... ✨");
+                        const mp3Url = await generateAceMusic(promptSong || userQuestion);
+                        if (mp3Url) {
+                            await sendAudio(chatId, mp3Url, `🎶 Bài hát sáng tác theo yêu cầu của Onii-chan đây ạ: "${promptSong || userQuestion}"`);
+                            addLog(chatId, userQuestion, `[Gửi file nhạc MP3 ACE Music: ${mp3Url}]`);
+                        } else {
+                            await sendMessage(chatId, `🎶 Em chưa tải được file MP3 trực tiếp từ server ACE Music, Onii-chan bấm vào đây nghe thử bài hát nhé: https://acemusic.ai/search?q=${encodeURIComponent(promptSong || userQuestion)} ✨`);
+                            addLog(chatId, userQuestion, "[Kết nối ACE Music AI]");
+                        }
+                    }
+
+                    else {
                         const isHotGroupTopic = textLower.includes("cafe") || textLower.includes("cà phê") || textLower.includes("ăn") || textLower.includes("uống") || textLower.includes("chơi") || textLower.includes("game") || textLower.includes("đi đâu") || textLower.includes("ở đâu") || textLower.includes("phim") || textLower.includes("nhậu") || textLower.includes("bây") || textLower.includes("không");
                         const now = Date.now();
                         const lastReply = lastBotReplyTime.get(chatId) || 0;
@@ -641,7 +721,7 @@ async function getUpdates() {
                         let promptToPass = userQuestion;
                         if (isGroupJumpIn && !textLower.includes("bot")) {
                             const recentDialog = gBuf.map(b => `${b.sender}: "${b.text}"`).join("\n");
-                            promptToPass = `Dưới đây là các tin nhắn vừa diễn ra giữa các thành viên trong nhóm Zalo:\n${recentDialog}\n\nHãy là cô em gái AI nhí nhảnh, tự nhiên nhảy vào cuộc trò chuyện (jump in), đưa ra gợi ý/đề xuất địa điểm hoặc ý kiến vui vẻ, hữu ích tiếp lời mọi người!`;
+                            promptToPass = `Dưới đây là đoạn trò chuyện gần đây giữa các thành viên trong nhóm Zalo:\n${recentDialog}\n\nHãy là cô em gái AI nhí nhảnh, tự nhiên xen vào cuộc trò chuyện (jump in), đưa ra gợi ý/đề xuất địa điểm hoặc ý kiến vui vẻ, hữu ích tiếp lời mọi người!`;
                         }
 
                         const aiResponse = hasImage
@@ -683,7 +763,7 @@ async function getUpdates() {
 }
 
 console.log("=========================================");
-console.log(" ZALO BOT GROQ API (GPT-OSS 120B ONLINE) ");
+console.log(" ZALO BOT GROQ API (LLAMA 3.3 70B SPEED) ");
 console.log("=========================================");
 
 getUpdates();
