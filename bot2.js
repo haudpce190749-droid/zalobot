@@ -83,9 +83,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Live Audio Host Active)</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (3-Layer Audio Active)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Audio Host Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Multi-Layer Delivery Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -255,56 +255,92 @@ async function sendPhoto(chatId, photoUrl, caption) {
 }
 
 // ==============================
-// GỬI FILE ÂM THANH MP3 (AUDIO)
+// GỬI FILE ÂM THANH MP3 (AUDIO - 3 LAYER FALLBACK)
 // ==============================
 
 async function sendAudio(chatId, audioUrl, caption = "") {
+    let sent = false;
+
+    // 1. Thử gửi qua sendAudio (Player Widget)
     try {
         await axios.post(`${BASE_URL}/sendAudio`, {
             chat_id: chatId,
             audio: audioUrl,
             caption: caption
         });
-    } catch (error) {
-        console.error("Lỗi sendAudio Zalo:", error?.response?.data || error.message);
-        if (audioUrl.startsWith("http")) {
-            await sendMessage(chatId, `${caption}\n🎵 Bấm vào link để nghe file MP3: ${audioUrl}`);
-        } else {
-            await sendMessage(chatId, `${caption}\n🎵 [File nhạc MP3 đã được tạo thành công!]`);
+        sent = true;
+    } catch (e1) {
+        console.error("Lỗi sendAudio Zalo:", e1?.response?.data || e1.message);
+    }
+
+    // 2. Thử gửi qua sendDocument (File MP3)
+    if (!sent) {
+        try {
+            await axios.post(`${BASE_URL}/sendDocument`, {
+                chat_id: chatId,
+                document: audioUrl,
+                caption: caption
+            });
+            sent = true;
+        } catch (e2) {
+            console.error("Lỗi sendDocument Zalo:", e2?.response?.data || e2.message);
         }
+    }
+
+    // 3. Fallback: Gửi tin nhắn Text chứa Link MP3 trực tiếp để bấm nghe!
+    if (!sent) {
+        const textMsg = `🎶 **Bài hát cho Onii-chan đây ạ!**\n\n🎵 **Link nghe MP3 trực tiếp:** ${audioUrl}\n\n${caption}`;
+        await sendMessage(chatId, textMsg);
     }
 }
 
 // ==============================
-// TỰ ĐỘNG VIẾT LỜI BÀI HÁT BẰNG GROQ AI
+// TỰ ĐỘNG THIẾT KẾ PROMPT VÀ VIẾT LỜI CẢM XÚC BẰNG GROQ AI
 // ==============================
 
-async function generateLyricsWithGroq(promptSong) {
+async function generateMusicPayloadWithGroq(userTopic) {
     try {
-        console.log(`[GROQ LYRICS WRITER] ✍️ Đang tự động viết lời bài hát cho: "${promptSong}"`);
+        console.log(`[GROQ MUSIC PRODUCER] ✍️ Đang thiết kế nhạc và viết lời bài hát cho: "${userTopic}"`);
         const payload = {
             model: GROQ_TEXT_MODEL,
             messages: [
                 {
                     role: "system",
-                    content: "Bạn là một nhạc sĩ chuyên nghiệp. Hãy viết lời bài hát tiếng Việt ngắn gọn, giai điệu bắt tai, có cấu trúc [Verse 1], [Chorus] dựa trên chủ đề/yêu cầu của người dùng. Chỉ trả về đúng lời bài hát kèm các thẻ [Verse 1], [Chorus]."
+                    content: `Bạn là Music Producer AI chuyên nghiệp.
+Nhiệm vụ của bạn là lấy yêu cầu của người dùng và tạo ra một định dạng JSON gồm 2 trường:
+1. "prompt": Dịch thể loại/cảm xúc nhạc cụ sang các tag tiếng Anh (vd: vpop, upbeat, female vocal, acoustic guitar, catchy).
+2. "lyrics": Hãy sáng tác bài hát TIẾNG VIỆT cực kỳ cảm xúc, gieo vần chuẩn, với cấu trúc chuẩn: [Verse 1], [Chorus], [Verse 2], [Chorus], [Outro]. Chỉ trả về lời bài hát thuần túy cùng các thẻ [Verse], [Chorus]. TUYỆT ĐỐI KHÔNG chèn câu chào hay giải thích.
+CHỈ trả về ĐÚNG MỘT JSON hợp lệ.`
                 },
                 {
                     role: "user",
-                    content: `Sáng tác lời bài hát ngắn gọn cho yêu cầu: "${promptSong}"`
+                    content: `Yêu cầu nhạc: ${userTopic}`
                 }
             ],
-            max_tokens: 500,
+            max_tokens: 800,
             temperature: 0.7
         };
+
         const res = await axios.post(GROQ_API_URL, payload, {
             headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
             timeout: 15000
         });
-        return res.data?.choices?.[0]?.message?.content || promptSong;
+
+        const raw = res.data?.choices?.[0]?.message?.content || "";
+        const cleanJson = raw.trim().replace(/```json/gi, "").replace(/```/gi, "");
+        const parsed = JSON.parse(cleanJson);
+
+        return {
+            prompt: parsed.prompt || "vpop, upbeat, female vocal",
+            lyrics: parsed.lyrics || ""
+        };
+
     } catch (e) {
-        console.error("Lỗi Groq Lyrics Generator:", e.message);
-        return promptSong;
+        console.error("Lỗi Groq Music Producer:", e.message);
+        return {
+            prompt: "vpop, upbeat, female vocal",
+            lyrics: `[Verse 1]\nNắng lên phố rạng ngời em bước qua\nGiai điệu ngọt ngào dịu dàng trong tim ta\n\n[Chorus]\nHát cùng em câu ca đón ngày mới\nNụ cười rạng rỡ trao nhau người ơi`
+        };
     }
 }
 
@@ -319,7 +355,7 @@ async function generateAceMusic(promptStyle, lyricsText = "") {
     try {
         console.log(`[ACE MUSIC CLOUD] 🎵 Đang gửi request sang ACE Music Cloud (acemusic/acestep-v15-turbo)...`);
         
-        let contentMessage = `<prompt>${promptStyle || "vpop, upbeat, male vocal"}</prompt>`;
+        let contentMessage = `<prompt>${promptStyle || "vpop, upbeat, female vocal"}</prompt>`;
         if (lyricsText && lyricsText.trim() !== "") {
             contentMessage += `\n<lyrics>${lyricsText}</lyrics>`;
         }
@@ -775,19 +811,19 @@ async function getUpdates() {
 
                     if (isMusicCommand) {
                         const rawTopic = cleanText.replace(/^(tạo nhạc|sáng tác nhạc|tạo bài hát|tạo 1 bài nhạc|tạo một bài nhạc)\s*/i, "").trim();
-                        await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ Siêu máy chủ ACE Cloud (ACE-Step v1.5 Turbo) sáng tác và thu âm bài hát MP3 nè... ✨");
+                        await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ Groq AI soạn Lời Tiếng Việt và ACE Cloud đang cất giọng hát nè... ✨");
                         
-                        // 1. Groq AI tự động sáng tác Lời bài hát (Lyrics) chuẩn cấu trúc
-                        const fullLyrics = await generateLyricsWithGroq(rawTopic || cleanText);
+                        // 1. Groq AI tự động thiết kế Tag tiếng Anh & Sáng tác Lời Tiếng Việt chuẩn
+                        const musicData = await generateMusicPayloadWithGroq(rawTopic || cleanText);
                         
-                        // 2. Gửi Thể loại nhạc + Lời bài hát sang Siêu máy chủ ACE Cloud API chuẩn Puchibot
-                        const mp3Url = await generateAceMusic(rawTopic || "vpop, upbeat", fullLyrics);
+                        // 2. Gửi Tag tiếng Anh + Lời Tiếng Việt chuẩn sang ACE Cloud API để hát
+                        const mp3Url = await generateAceMusic(musicData.prompt, musicData.lyrics);
                         
                         if (mp3Url) {
-                            await sendAudio(chatId, mp3Url, `🎶 Bài hát từ Siêu máy chủ ACE Cloud đây ạ!\n\n📝 **Lời bài hát:**\n${fullLyrics}`);
+                            await sendAudio(chatId, mp3Url, `🎶 Bài hát ca từ Tiếng Việt cho Onii-chan đây ạ!\n✨ **Phong cách:** *${musicData.prompt}*\n\n📝 **Lời bài hát:**\n${musicData.lyrics}`);
                             addLog(chatId, userQuestion, `[Gửi file nhạc MP3 ACE Music: ${mp3Url}]`);
                         } else {
-                            await sendMessage(chatId, `📝 **Lời bài hát em vừa sáng tác cho Onii-chan:**\n\n${fullLyrics}\n\n*(Dạ Onii-chan ơi, Siêu máy chủ ACE Cloud đang bận/quá tải chưa kịp gửi file audio về, em đã lưu lại lời bài hát tuyệt đẹp này cho Onii-chan rồi nè! 🌸)*`);
+                            await sendMessage(chatId, `📝 **Lời bài hát em vừa sáng tác cho Onii-chan:**\n\n${musicData.lyrics}\n\n*(Dạ Onii-chan ơi, Siêu máy chủ ACE Cloud đang bận/quá tải chưa kịp gửi file audio về, em đã lưu lại lời bài hát tuyệt đẹp này cho Onii-chan rồi nè! 🌸)*`);
                             addLog(chatId, userQuestion, "[Sáng tác lời bài hát thành công]");
                         }
                     }
