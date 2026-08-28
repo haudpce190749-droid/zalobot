@@ -83,9 +83,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Fast 60s Render)</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Verified Lyrics Payload)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Fast Render Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Guaranteed Lyrics Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -299,22 +299,22 @@ async function generateMusicPayloadWithGroq(userTopic) {
                 {
                     role: "system",
                     content: `Bạn là Music Producer AI chuyên nghiệp.
-Nhiệm vụ của bạn là nhận yêu cầu của người dùng và xuất ra đúng định dạng text đơn giản sau:
+Nhiệm vụ của bạn là lấy bất kỳ yêu cầu nhạc nào của người dùng và sáng tác ra một bài hát Tiếng Việt theo ĐÚNG định dạng 2 phần sau:
 
-PROMPT: <dịch thể loại/cảm xúc nhạc cụ sang các tag tiếng Anh như: vpop, upbeat, female vocal, acoustic guitar, catchy>
-LYRICS:
+[PROMPT]
+vpop, upbeat, female vocal, acoustic guitar, catchy
+
+[LYRICS]
 [Verse 1]
-...
+Nắng lên phố rạng ngời em bước qua
+Những giai điệu ngọt ngào trong tim ta
 [Chorus]
-...
-[Outro]
-...
-
-Hãy sáng tác lời bài hát TIẾNG VIỆT ngọt ngào, gieo vần chuẩn.`
+Hát cùng em câu ca đón ngày mới
+Nụ cười rạng rỡ trao nhau người ơi`
                 },
                 {
                     role: "user",
-                    content: `Yêu cầu nhạc: ${userTopic}`
+                    content: `Sáng tác lời bài hát Tiếng Việt theo yêu cầu: "${userTopic}"`
                 }
             ],
             max_tokens: 800,
@@ -331,18 +331,23 @@ Hãy sáng tác lời bài hát TIẾNG VIỆT ngọt ngào, gieo vần chuẩn.
         let prompt = "vpop, upbeat, female vocal";
         let lyrics = "";
 
-        const promptMatch = raw.match(/PROMPT:\s*(.*?)(?=\n|LYRICS:|$)/i);
+        const promptMatch = raw.match(/\[PROMPT\]\s*([\s\S]*?)(?=\[LYRICS\]|$)/i);
         if (promptMatch && promptMatch[1]) {
-            prompt = promptMatch[1].trim();
+            prompt = promptMatch[1].trim().replace(/\n/g, ", ");
         }
 
-        const lyricsMatch = raw.match(/LYRICS:\s*([\s\S]*)/i);
+        const lyricsMatch = raw.match(/\[LYRICS\]\s*([\s\S]*)/i);
         if (lyricsMatch && lyricsMatch[1]) {
             lyrics = lyricsMatch[1].trim();
-        } else if (!raw.includes("PROMPT:")) {
-            lyrics = raw.trim();
+        } else {
+            lyrics = raw.replace(/\[PROMPT\][\s\S]*?(\n\n|$)/i).trim();
         }
 
+        if (!lyrics || lyrics.trim() === "" || lyrics.length < 10) {
+            lyrics = `[Verse 1]\nNắng lên phố rạng ngời em bước qua\nGiai điệu ngọt ngào dịu dàng trong tim ta\n\n[Chorus]\nHát cùng em câu ca đón ngày mới\nNụ cười rạng rỡ trao nhau người ơi`;
+        }
+
+        console.log(`[PRODUCER OUTPUT] 📝 Prompt: "${prompt}" | Lyrics length: ${lyrics.length} chars`);
         return { prompt, lyrics };
 
     } catch (e) {
@@ -377,7 +382,7 @@ async function generateAceMusic(promptStyle, lyricsText = "") {
 
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-            console.log(`[ACE MUSIC CLOUD] 🎵 Đang gửi request sang ACE Music Cloud (Lần thử ${attempt}/2, duration 60s)...`);
+            console.log(`[ACE MUSIC CLOUD] 🎵 Gửi request ACE Cloud (Lần thử ${attempt}/2) - Prompt: "${promptStyle}" | Lyrics: ${lyricsText ? lyricsText.length + " ký tự" : "RỐNG"}`);
             const res = await axios.post(ACE_CLOUD_URL, payload, {
                 headers: {
                     "Authorization": `Bearer ${ACE_API_KEY}`,
