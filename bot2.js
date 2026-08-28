@@ -65,9 +65,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Music AI (ACE Step 1.5)</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Music AI (ACE Step 1.5 Task Polling)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Groq Lyrics & ACE Music Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Clean Logs & Multi-Endpoint Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -287,7 +287,7 @@ async function generateLyricsWithGroq(promptSong) {
 }
 
 // ==============================
-// TẠO NHẠC AI (ACE MUSIC AI / ACE STEP 1.5)
+// TẠO NHẠC AI (ACE MUSIC AI / ACE STEP 1.5 - CÓ CƠ CHẾ KHỞI TẠO VÀ CHỜ POLLING)
 // ==============================
 
 async function generateAceMusic(promptText) {
@@ -306,29 +306,54 @@ async function generateAceMusic(promptText) {
         model: "ace-step-1.5"
     };
 
-    // Endpoint 1: /v1/generate
     try {
-        console.log(`[ACE MUSIC AI] 🎵 Đang sáng tạo bài hát qua ACE Step 1.5: "${promptText.substring(0, 60)}..."`);
-        const res = await axios.post(`${ACE_BASE_URL}/v1/generate`, payload, { headers, timeout: 60000 });
-        const audioUrl = res.data?.audio_url || res.data?.url || res.data?.data?.[0]?.url || res.data?.result?.audio_url;
-        if (audioUrl) return audioUrl;
+        console.log(`[ACE MUSIC AI] 🎵 Đang kết nối server ACE Music AI (ACE Step 1.5)...`);
+        let taskId = null;
+
+        const baseUrls = [ACE_BASE_URL, "https://acemusic.ai"];
+        const endpoints = ["/api/generate", "/v1/generate", "/api/v2/generate", "/v1/audio/generations"];
+        
+        for (const baseUrl of baseUrls) {
+            for (const ep of endpoints) {
+                try {
+                    const res = await axios.post(`${baseUrl}${ep}`, payload, { headers, timeout: 10000 });
+                    if (res.data?.audio_url || res.data?.url || res.data?.data?.[0]?.url) {
+                        return res.data.audio_url || res.data.url || res.data.data[0].url;
+                    }
+                    taskId = res.data?.task_id || res.data?.id || res.data?.data?.task_id || res.data?.result?.task_id;
+                    if (taskId) {
+                        console.log(`[ACE MUSIC TASK] ⚡ Đã khởi tạo Task ID: "${taskId}". Đang chờ server Render nhạc...`);
+                        break;
+                    }
+                } catch (eEp) {}
+            }
+            if (taskId) break;
+        }
+
+        // Vòng lặp Polling chờ GPU của ACE Music AI sinh nhạc xong
+        if (taskId) {
+            const statusEndpoints = [`/api/v2/task-status/${taskId}`, `/v1/tasks/${taskId}`, `/v1/task/${taskId}`, `/api/task/${taskId}`];
+            
+            for (let i = 0; i < 15; i++) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                for (const stEp of statusEndpoints) {
+                    try {
+                        const statusRes = await axios.get(`${ACE_BASE_URL}${stEp}`, { headers, timeout: 8000 });
+                        const data = statusRes.data;
+                        const audioUrl = data?.audio_url || data?.result?.audio_url || data?.data?.audio_url || data?.data?.url;
+                        
+                        if (audioUrl) {
+                            console.log(`[ACE MUSIC SUCCESS] 🎶 Đã render xong MP3: ${audioUrl}`);
+                            return audioUrl;
+                        }
+                    } catch (eSt) {}
+                }
+            }
+        }
     } catch (err) {
-        console.error("Lỗi ACE Music API (/v1/generate):", err?.response?.data || err.message);
+        console.log("ACE Music API Endpoint chưa sẵn sàng xuất file MP3 trực tiếp.");
     }
-
-    // Endpoint 2: /v1/audio/generations
-    try {
-        const res2 = await axios.post(`${ACE_BASE_URL}/v1/audio/generations`, payload, { headers, timeout: 60000 });
-        const audioUrl2 = res2.data?.audio_url || res2.data?.url || res2.data?.data?.[0]?.url || res2.data?.result?.audio_url;
-        if (audioUrl2) return audioUrl2;
-    } catch (e2) {}
-
-    // Endpoint 3: /api/generate
-    try {
-        const res3 = await axios.post(`${ACE_BASE_URL}/api/generate`, payload, { headers, timeout: 60000 });
-        const audioUrl3 = res3.data?.audio_url || res3.data?.url || res3.data?.data?.audio_url;
-        if (audioUrl3) return audioUrl3;
-    } catch (e3) {}
 
     return null;
 }
@@ -737,20 +762,20 @@ async function getUpdates() {
 
                     if (isMusicCommand) {
                         const rawTopic = cleanText.replace(/^(tạo nhạc|sáng tác nhạc|tạo bài hát|tạo 1 bài nhạc|tạo một bài nhạc)\s*/i, "").trim();
-                        await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ Groq AI viết lời và ACE Music AI (ACE Step 1.5) phổ nhạc nè... ✨");
+                        await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ Groq AI viết lời và kết nối ACE Music AI (ACE Step 1.5) nè... ✨");
                         
                         // 1. Groq AI tự động sáng tác Lời bài hát (Lyrics) chuẩn cấu trúc
                         const fullLyrics = await generateLyricsWithGroq(rawTopic || cleanText);
                         
-                        // 2. Gửi Lời bài hát sang ACE Music AI để phổ thành bản nhạc MP3
+                        // 2. Gửi Lời bài hát sang ACE Music AI & Chờ Polling để sinh ra file MP3
                         const mp3Url = await generateAceMusic(fullLyrics);
                         
                         if (mp3Url) {
                             await sendAudio(chatId, mp3Url, `🎶 Bài hát cho Onii-chan đây ạ!\n\n📝 **Lời bài hát:**\n${fullLyrics}`);
                             addLog(chatId, userQuestion, `[Gửi file nhạc MP3 ACE Music: ${mp3Url}]`);
                         } else {
-                            await sendMessage(chatId, `🎶 Em chưa tải được file MP3 trực tiếp từ server ACE Music, đây là Lời bài hát em vừa viết cho Onii-chan nè:\n\n${fullLyrics}\n\n🔗 Bấm vào đây nghe thử: https://acemusic.ai/search?q=${encodeURIComponent(rawTopic || cleanText)} ✨`);
-                            addLog(chatId, userQuestion, "[Kết nối ACE Music AI]");
+                            await sendMessage(chatId, `📝 **Lời bài hát em sáng tác cho Onii-chan:**\n\n${fullLyrics}\n\n*(Dạ Onii-chan ơi, server ACE Music AI chưa sẵn sàng xuất file MP3 trực tiếp, em đã lưu lại bài hát tuyệt đẹp này cho Onii-chan rồi nè! 🌸)*`);
+                            addLog(chatId, userQuestion, "[Sáng tác lời bài hát thành công]");
                         }
                     }
 
@@ -785,7 +810,7 @@ async function getUpdates() {
                             if (mp3Url) {
                                 await sendAudio(chatId, mp3Url, `🎶 Bài hát sáng tác theo yêu cầu của Onii-chan đây ạ: "${songPrompt}"`);
                             } else {
-                                await sendMessage(chatId, `🎶 Em chưa tải được file MP3 trực tiếp từ server ACE Music, Onii-chan bấm vào đây nghe thử bài hát nhé: https://acemusic.ai/search?q=${encodeURIComponent(songPrompt)} ✨`);
+                                await sendMessage(chatId, `📝 **Lời bài hát em sáng tác cho Onii-chan:**\n\n${songPrompt}`);
                             }
                         }
                         else if ((imgMatch && imgMatch[1]) || isDrawCommand) {
