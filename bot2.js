@@ -65,9 +65,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP Streamable HTTP</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Mandatory Exa MCP Search</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Exa MCP Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Exa MCP Mandatory)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -137,7 +137,7 @@ setInterval(() => {
     axios.get(RENDER_URL).catch(() => {});
 }, 5 * 60 * 1000);
 
-// Cứ mỗi 15-20 phút: Đóng vai 1 THÀTH VIÊN NHÓM THẬT SỰ - Kiểm tra xem mọi người trong nhóm có nhắn tin mới với nhau không.
+// Cứ mỗi 15-20 phút: Đóng vai 1 THÀNH VIÊN NHÓM THẬT SỰ - Kiểm tra xem mọi người trong nhóm có nhắn tin mới với nhau không.
 setInterval(async () => {
     try {
         const now = Date.now();
@@ -431,9 +431,10 @@ Dù mang giọng điệu em gái nhí nhảnh nhưng phân tích kiến thức v
 Nếu user yêu cầu tạo hình ảnh, chỉ trả về đúng một cú pháp:
 [GEN_IMAGE: <prompt_tiếng_anh>]
 
-5. MCP TOOL TÌM KIẾM REALTIME (EXA SEARCH):
-CHỈ xuất cú pháp [SEARCH_REQ: {"query": "..."}] khi người dùng CỐ Ý YÊU CẦU TÌM KIẾM tin tức thời sự hôm nay, thời tiết hôm nay, giá thị trường realtime.
-Nếu người dùng hỏi về nhân vật, khái niệm, phim ảnh, kiến thức chung mà bạn ĐÃ BIẾT (ví dụ: Vinh Râu, FAP TV, Sơn Tùng M-TP, lịch sử, toán học...), bạn HÃY TRẢ LỜI TRỰC TIẾP bằng kiến thức của bạn, KHÔNG ĐƯỢC gọi tool tìm kiếm!`
+5. BẮT BUỘC SỬ DỤNG MCP EXA SEARCH ENGINE KHI TRA CỨU:
+Vì dữ liệu của model AI đã cũ, BẮT BUỘC xuất ra cú pháp JSON gọi MCP Exa Tool đối với BẤT KỲ CÂU HỎI NÀO liên quan đến tra cứu thông tin, tìm hiểu người nổi tiếng (ca sĩ, diễn viên, KOL, doanh nhân...), tin tức thời sự, sự kiện, thời tiết, giá thị trường, hoặc câu hỏi có vẻ cần cập nhật thông tin:
+[SEARCH_REQ: {"query": "từ khóa tìm kiếm chi tiết"}]
+Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: ...]. Tuyệt đối không tự trả lời mò bằng kiến thức cũ khi chưa có dữ liệu MCP Search!`
         };
 
         const payload = {
@@ -480,7 +481,7 @@ Nếu người dùng hỏi về nhân vật, khái niệm, phim ảnh, kiến th
                         ...sanitizedHistory,
                         { role: "user", content: userContent },
                         { role: "assistant", content: aiResponse },
-                        { role: "user", content: `[DỮ LIỆU TÌM KIẾM REALTIME TỪ EXA MCP SERVER]:\n${searchResults}\n\nHãy tổng hợp dữ liệu thực tế trên (hoặc dùng kiến thức của bạn) để trả lời Onii-chan một cách chính xác, ngắn gọn và ngọt ngào nhất!` }
+                        { role: "user", content: `[DỮ LIỆU TÌM KIẾM REALTIME TỪ EXA MCP SERVER]:\n${searchResults}\n\nHãy tổng hợp dữ liệu thực tế vừa tìm kiếm trên để trả lời Onii-chan một cách chính xác, mới nhất và ngọt ngào nhất!` }
                     ],
                     temperature: 0.6,
                     max_tokens: 2048,
