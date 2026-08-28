@@ -341,6 +341,8 @@ async function searchWebExa(query) {
         });
 
         let rawData = res.data;
+        let finalContent = "";
+
         if (typeof rawData === "string") {
             const lines = rawData.split("\n");
             for (const line of lines) {
@@ -349,7 +351,8 @@ async function searchWebExa(query) {
                         const parsed = JSON.parse(line.replace(/^data:\s*/, ""));
                         const content = parsed?.result?.content;
                         if (Array.isArray(content)) {
-                            return content.map(c => c.text || "").join("\n\n");
+                            finalContent = content.map(c => c.text || "").join("\n\n");
+                            break;
                         }
                     } catch (e) {}
                 }
@@ -357,8 +360,16 @@ async function searchWebExa(query) {
         } else if (rawData?.result?.content) {
             const content = rawData.result.content;
             if (Array.isArray(content)) {
-                return content.map(c => c.text || "").join("\n\n");
+                finalContent = content.map(c => c.text || "").join("\n\n");
             }
+        }
+
+        if (finalContent) {
+            // Giới hạn tối đa 2,500 ký tự để tránh lỗi Groq API HTTP 413 Payload Too Large
+            if (finalContent.length > 2500) {
+                finalContent = finalContent.substring(0, 2500) + "\n\n[...Đã tối ưu độ dài dữ liệu search...]";
+            }
+            return finalContent;
         }
     } catch (err) {
         console.error("Lỗi Exa MCP Endpoint:", err?.response?.data || err.message);
@@ -484,7 +495,7 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
                 
                 const searchResults = await searchWebExa(searchJson.query);
 
-                // Pass 2: Gửi câu hỏi kèm dữ liệu thực tế từ Exa MCP cho Groq AI tổng hợp (SẠCH SẼ, KHÔNG DỰ DƯ LỆNH THÔ)
+                // Pass 2: Gửi câu hỏi kèm dữ liệu thực tế từ Exa MCP cho Groq AI tổng hợp
                 const pass2Payload = {
                     model: selectedModel,
                     messages: [
@@ -522,7 +533,7 @@ Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: 
         }
 
         // ========================================================
-        // AN TOÀN: BỘ LỌC NẾU CÒN DỰ DƯ THÌ LỌC SẠCH LỆNH THÔ
+        // AN TOÀN: BỘ LỌC TỰ ĐỘNG KHÔNG ĐỂ LỌT LỆNH THÔ
         // ========================================================
         if (aiResponse.includes("[SEARCH_REQ:")) {
             aiResponse = aiResponse.replace(/\[SEARCH_REQ:\s*\{.*?\}\]/gs, "").trim();
