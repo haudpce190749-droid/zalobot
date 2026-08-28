@@ -67,7 +67,7 @@ http.createServer((req, res) => {
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
                 <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Music AI (ACE Step 1.5)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (ACE Music API Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Groq Lyrics & ACE Music Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -254,6 +254,39 @@ async function sendAudio(chatId, audioUrl, caption = "") {
 }
 
 // ==============================
+// TỰ ĐỘNG VIẾT LỜI BÀI HÁT BẰNG GROQ AI
+// ==============================
+
+async function generateLyricsWithGroq(promptSong) {
+    try {
+        console.log(`[GROQ LYRICS WRITER] ✍️ Đang tự động viết lời bài hát cho: "${promptSong}"`);
+        const payload = {
+            model: GROQ_TEXT_MODEL,
+            messages: [
+                {
+                    role: "system",
+                    content: "Bạn là một nhạc sĩ chuyên nghiệp. Hãy viết lời bài hát tiếng Việt ngắn gọn, giai điệu bắt tai, có cấu trúc [Verse 1], [Chorus] dựa trên chủ đề/yêu cầu của người dùng. Chỉ trả về đúng lời bài hát kèm các thẻ [Verse 1], [Chorus]."
+                },
+                {
+                    role: "user",
+                    content: `Sáng tác lời bài hát ngắn gọn cho yêu cầu: "${promptSong}"`
+                }
+            ],
+            max_tokens: 500,
+            temperature: 0.7
+        };
+        const res = await axios.post(GROQ_API_URL, payload, {
+            headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
+            timeout: 15000
+        });
+        return res.data?.choices?.[0]?.message?.content || promptSong;
+    } catch (e) {
+        console.error("Lỗi Groq Lyrics Generator:", e.message);
+        return promptSong;
+    }
+}
+
+// ==============================
 // TẠO NHẠC AI (ACE MUSIC AI / ACE STEP 1.5)
 // ==============================
 
@@ -275,7 +308,7 @@ async function generateAceMusic(promptText) {
 
     // Endpoint 1: /v1/generate
     try {
-        console.log(`[ACE MUSIC AI] 🎵 Đang sáng tạo bài hát qua ACE Step 1.5: "${promptText}"`);
+        console.log(`[ACE MUSIC AI] 🎵 Đang sáng tạo bài hát qua ACE Step 1.5: "${promptText.substring(0, 60)}..."`);
         const res = await axios.post(`${ACE_BASE_URL}/v1/generate`, payload, { headers, timeout: 60000 });
         const audioUrl = res.data?.audio_url || res.data?.url || res.data?.data?.[0]?.url || res.data?.result?.audio_url;
         if (audioUrl) return audioUrl;
@@ -703,14 +736,20 @@ async function getUpdates() {
                                            cleanText.includes("sáng tác bài nhạc");
 
                     if (isMusicCommand) {
-                        const promptSong = cleanText.replace(/^(tạo nhạc|sáng tác nhạc|tạo bài hát|tạo 1 bài nhạc|tạo một bài nhạc)\s*/i, "").trim();
-                        await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ ACE Music AI (ACE Step 1.5) sáng tác bài hát nè... ✨");
-                        const mp3Url = await generateAceMusic(promptSong || cleanText);
+                        const rawTopic = cleanText.replace(/^(tạo nhạc|sáng tác nhạc|tạo bài hát|tạo 1 bài nhạc|tạo một bài nhạc)\s*/i, "").trim();
+                        await sendMessage(chatId, "🎵 Onii-chan chờ em xíu nhé, em đang nhờ Groq AI viết lời và ACE Music AI (ACE Step 1.5) phổ nhạc nè... ✨");
+                        
+                        // 1. Groq AI tự động sáng tác Lời bài hát (Lyrics) chuẩn cấu trúc
+                        const fullLyrics = await generateLyricsWithGroq(rawTopic || cleanText);
+                        
+                        // 2. Gửi Lời bài hát sang ACE Music AI để phổ thành bản nhạc MP3
+                        const mp3Url = await generateAceMusic(fullLyrics);
+                        
                         if (mp3Url) {
-                            await sendAudio(chatId, mp3Url, `🎶 Bài hát sáng tác theo yêu cầu của Onii-chan đây ạ: "${promptSong || cleanText}"`);
+                            await sendAudio(chatId, mp3Url, `🎶 Bài hát cho Onii-chan đây ạ!\n\n📝 **Lời bài hát:**\n${fullLyrics}`);
                             addLog(chatId, userQuestion, `[Gửi file nhạc MP3 ACE Music: ${mp3Url}]`);
                         } else {
-                            await sendMessage(chatId, `🎶 Em chưa tải được file MP3 trực tiếp từ server ACE Music, Onii-chan bấm vào đây nghe thử bài hát nhé: https://acemusic.ai/search?q=${encodeURIComponent(promptSong || cleanText)} ✨`);
+                            await sendMessage(chatId, `🎶 Em chưa tải được file MP3 trực tiếp từ server ACE Music, đây là Lời bài hát em vừa viết cho Onii-chan nè:\n\n${fullLyrics}\n\n🔗 Bấm vào đây nghe thử: https://acemusic.ai/search?q=${encodeURIComponent(rawTopic || cleanText)} ✨`);
                             addLog(chatId, userQuestion, "[Kết nối ACE Music AI]");
                         }
                     }
