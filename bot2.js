@@ -65,9 +65,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Groq LPU Speed</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | MCP Exa Search Engine</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Group Jump-In Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (MCP Exa Search Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -168,8 +168,8 @@ const GROQ_VISION_MODEL = "groq/compound";
 
 let lastProcessedId = null;
 const memory = new Map();
-const groupBuffer = new Map(); // Lưu hội thoại giữa các thành viên trong nhóm
-const lastBotReplyTime = new Map(); // Thời điểm gần nhất bot xen vào nhóm
+const groupBuffer = new Map();
+const lastBotReplyTime = new Map();
 
 // ==============================
 // GỬI TIN NHẮN (CÓ FALLBACK & CHUNKING)
@@ -304,7 +304,68 @@ function updateMemory(chatId, role, content) {
 }
 
 // ==============================
-// GỌI GROQ AI
+// HÀM TÌM KIẾM TRỰC TUYẾN (EXA AI / DUCKDUCKGO MCP TOOL)
+// ==============================
+
+async function searchWebExa(query) {
+    const EXA_API_KEY = (process.env.EXA_API_KEY || "").trim();
+
+    // 1. Nếu có EXA_API_KEY -> Gọi Exa AI Search API chính chủ
+    if (EXA_API_KEY) {
+        try {
+            console.log(`[EXA AI SEARCH] 🔍 Đang tìm kiếm từ khóa: "${query}"`);
+            const res = await axios.post("https://api.exa.ai/search", {
+                query: query,
+                numResults: 3,
+                useAutoprompt: true,
+                contents: { text: { maxCharacters: 400 } }
+            }, {
+                headers: {
+                    "x-api-key": EXA_API_KEY,
+                    "Content-Type": "application/json"
+                },
+                timeout: 10000
+            });
+
+            if (res.data && res.data.results && res.data.results.length > 0) {
+                return res.data.results.map((r, i) => 
+                    `[Nguồn ${i+1}]: ${r.title}\nNội dung: ${r.text || r.snippet || ""}`
+                ).join("\n\n");
+            }
+        } catch (err) {
+            console.error("Lỗi Exa AI Search API:", err?.response?.data || err.message);
+        }
+    }
+
+    // 2. Fallback tự động nếu chưa nạp EXA_API_KEY -> Gọi DuckDuckGo HTML Search miễn phí
+    try {
+        console.log(`[DDG FALLBACK SEARCH] 🔍 Đang tìm kiếm từ khóa: "${query}"`);
+        const res = await axios.get(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            timeout: 10000
+        });
+
+        const snippets = [];
+        const regex = /<a class="result__snippet"[^>]*>(.*?)<\/a>/gi;
+        let match;
+        while ((match = regex.exec(res.data)) !== null && snippets.length < 3) {
+            const cleanText = match[1].replace(/<[^>]+>/g, "").trim();
+            if (cleanText) snippets.push(`- ${cleanText}`);
+        }
+
+        return snippets.length > 0
+            ? snippets.join("\n\n")
+            : "Chưa tìm thấy tin tức trực tuyến mới nhất.";
+    } catch (e) {
+        console.error("Lỗi DuckDuckGo Search:", e.message);
+        return "Không thể kết nối dịch vụ tìm kiếm web.";
+    }
+}
+
+// ==============================
+// GỌI GROQ AI (TÍCH HỢP MCP TOOL CALLING TRUY VẤN EXA SEARCH)
 // ==============================
 
 async function askAI(chatId, prompt, imageUrl = null, isKeepAlive = false) {
@@ -352,12 +413,9 @@ async function askAI(chatId, prompt, imageUrl = null, isKeepAlive = false) {
 
     try {
 
-        const payload = {
-            model: selectedModel,
-            messages: [
-                {
-                    role: "system",
-                    content: `Bạn là Bot Say Gex - trợ lý AI thông minh trên Groq nhưng mang phong cách một CÔ EM GÁI NHỎ cực kỳ dễ thương, ngoan ngoãn và lễ phép.
+        const systemMessage = {
+            role: "system",
+            content: `Bạn là Bot Say Gex - trợ lý AI thông minh trên Groq nhưng mang phong cách một CÔ EM GÁI NHỎ cực kỳ dễ thương, ngoan ngoãn và lễ phép.
 
 Quy tắc hoạt động:
 
@@ -378,11 +436,18 @@ Dù mang giọng điệu em gái nhí nhảnh nhưng phân tích kiến thức v
 
 4. HÌNH ẢNH:
 Nếu user yêu cầu tạo hình ảnh, chỉ trả về đúng một cú pháp:
-
 [GEN_IMAGE: <prompt_tiếng_anh>]
 
-Không thêm nội dung khác khi sử dụng cú pháp này.`
-                },
+5. MCP TOOL TÌM KIẾM REALTIME (EXA SEARCH):
+Nếu người dùng hỏi về tin tức thời sự mới nhất, giá cả thị trường realtime, thời tiết hôm nay, sự kiện vừa diễn ra, hoặc thông tin mà bạn không chắc chắn, bạn BẮT BUỘC xuất ra cú pháp JSON gọi tool:
+[SEARCH_REQ: {"query": "từ khóa tìm kiếm"}]
+Không thêm bất kỳ văn bản nào khác khi xuất cú pháp [SEARCH_REQ: ...].`
+        };
+
+        const payload = {
+            model: selectedModel,
+            messages: [
+                systemMessage,
                 ...sanitizedHistory,
                 {
                     role: "user",
@@ -406,8 +471,53 @@ Không thêm nội dung khác khi sử dụng cú pháp này.`
             }
         );
 
-        const aiResponse =
-            response.data.choices[0].message.content;
+        let aiResponse = response.data.choices[0].message.content;
+
+        // ========================================================
+        // MCP TOOL INTERCEPTION (ĐÓN ĐẦU JSON TÌM KIẾM WEB)
+        // ========================================================
+        const searchMatch = aiResponse.match(/\[SEARCH_REQ:\s*(\{.*?\})\]/s);
+        if (searchMatch && searchMatch[1]) {
+            try {
+                const searchJson = JSON.parse(searchMatch[1]);
+                console.log(`[MCP TOOL DETECTED] ⚡ Đang đón đầu yêu cầu tìm kiếm: "${searchJson.query}"`);
+                
+                // Gọi Exa AI / DDG Search lấy thông tin thực tế
+                const searchResults = await searchWebExa(searchJson.query);
+
+                // Pass 2: Gửi thông tin Web realtime lại cho Groq AI để tóm tắt
+                const pass2Payload = {
+                    model: selectedModel,
+                    messages: [
+                        systemMessage,
+                        ...sanitizedHistory,
+                        { role: "user", content: userContent },
+                        { role: "assistant", content: aiResponse },
+                        { role: "user", content: `[DỮ LIỆU TÌM KIẾM TRỰC TUYẾN MỚI NHẤT TỪ EXA/DDG]:\n${searchResults}\n\nHãy tổng hợp dữ liệu thực tế trên để trả lời Onii-chan một cách chính xác, ngắn gọn và ngọt ngào nhất!` }
+                    ],
+                    temperature: 0.6,
+                    max_tokens: 2048,
+                    reasoning_effort: "medium"
+                };
+
+                const pass2Response = await axios.post(
+                    GROQ_API_URL,
+                    pass2Payload,
+                    {
+                        headers: {
+                            "Authorization": `Bearer ${GROQ_API_KEY}`,
+                            "Content-Type": "application/json"
+                        },
+                        timeout: 60000
+                    }
+                );
+
+                aiResponse = pass2Response.data.choices[0].message.content;
+
+            } catch (errParse) {
+                console.error("Lỗi xử lý MCP Search Tool:", errParse.message);
+            }
+        }
 
         if (!isKeepAlive) {
             updateMemory(chatId, "user", userContent);
