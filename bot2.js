@@ -83,9 +83,9 @@ http.createServer((req, res) => {
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
                 <h2 class="fw-bold m-0 text-info">🌸 Zalo Bot Admin Dashboard</h2>
-                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Regex Parser Active)</small>
+                <small class="text-secondary">Model: OpenAI GPT-OSS 120B | Exa MCP & ACE Step 1.5 Turbo (Zalo Clean Payload Active)</small>
             </div>
-            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Regex Producer Active)</span>
+            <span class="badge bg-success p-2 px-3 fs-6">🟢 ONLINE 24/7 (Zalo Clean Active)</span>
         </div>
         
         <div class="row g-3 mb-4">
@@ -202,7 +202,7 @@ const groupBuffer = new Map();
 const lastBotReplyTime = new Map();
 
 // ==============================
-// GỬI TIN NHẮN (CÓ FALLBACK & CHUNKING)
+// GỬI TIN NHẮN (CHUẨN ZALO PLATFORM API)
 // ==============================
 
 async function sendMessage(chatId, text) {
@@ -220,18 +220,10 @@ async function sendMessage(chatId, text) {
     try {
         await axios.post(`${BASE_URL}/sendMessage`, {
             chat_id: chatId,
-            text: text,
-            parse_mode: "Markdown"
+            text: text
         });
     } catch (error) {
-        try {
-            await axios.post(`${BASE_URL}/sendMessage`, {
-                chat_id: chatId,
-                text: text
-            });
-        } catch (err2) {
-            console.error("Lỗi gửi tin nhắn Zalo:", err2?.response?.data || err2.message);
-        }
+        console.error("Lỗi gửi tin nhắn Zalo:", error?.response?.data || error.message);
     }
 }
 
@@ -289,7 +281,7 @@ async function sendAudio(chatId, audioUrl, caption = "") {
 
     // 3. Fallback: Gửi tin nhắn Text chứa Link MP3 trực tiếp để bấm nghe!
     if (!sent) {
-        const textMsg = `🎶 **Bài hát cho Onii-chan đây ạ!**\n\n🎵 **Link nghe MP3 trực tiếp:** ${audioUrl}\n\n${caption}`;
+        const textMsg = `${caption}\n\n🎵 Link nghe/tải file MP3 trực tiếp: ${audioUrl}`;
         await sendMessage(chatId, textMsg);
     }
 }
@@ -626,12 +618,7 @@ Quy tắc hoạt động:
 - Giọng điệu hồn nhiên, dễ thương, ngoan ngoãn, sẵn sàng hỗ trợ anh/chị hết mình.
 
 2. TRÌNH BÀY:
-BẮT BUỘC sử dụng Markdown để trình bày câu trả lời rõ ràng, mạch lạc và dễ đọc.
-- **in đậm**
-- *in nghiêng*
-- ~~gạch ngang~~
-- # Tiêu đề
-- Danh sách, Code khi cần
+Trình bày câu trả lời rõ ràng, mạch lạc và dễ đọc.
 
 3. KIẾN THỨC:
 Dù mang giọng điệu em gái nhí nhảnh nhưng phân tích kiến thức và thông tin giải đáp phải chuẩn xác 100%.
@@ -810,11 +797,11 @@ async function getUpdates() {
                     if (textLower === "menu" || textLower === "@bot say gex menu") {
                         await sendMessage(
                             chatId,
-                            "📋 **MENU (GROQ API SPEED)**\n\n" +
-                            "♻️ `/reset` : Xoá trí nhớ\n" +
-                            "📸 `Gửi ảnh` : Phân tích ảnh\n" +
-                            "🎨 `Vẽ ...` : Tạo ảnh\n" +
-                            "🎵 `Tạo nhạc ...` : Sáng tác bài hát MP3 qua ACE Music AI (Ace Step 1.5)"
+                            "📋 MENU (GROQ API SPEED)\n\n" +
+                            "♻️ /reset : Xoá trí nhớ\n" +
+                            "📸 Gửi ảnh : Phân tích ảnh\n" +
+                            "🎨 Vẽ ... : Tạo ảnh\n" +
+                            "🎵 Tạo nhạc ... : Sáng tác bài hát MP3 qua ACE Music AI (Ace Step 1.5)"
                         );
                     }
 
@@ -834,14 +821,17 @@ async function getUpdates() {
                         // 1. Groq AI tự động thiết kế Tag tiếng Anh & Sáng tác Lời Tiếng Việt chuẩn
                         const musicData = await generateMusicPayloadWithGroq(rawTopic || cleanText);
                         
-                        // 2. Gửi Tag tiếng Anh + Lời Tiếng Việt chuẩn sang ACE Cloud API để hát
+                        // 2. Gửi Lời Bài Hát trước qua tin nhắn Zalo chuẩn (100% nhận tức thì)
+                        await sendMessage(chatId, `📝 Lời bài hát vừa sáng tác cho Onii-chan:\n\n${musicData.lyrics}`);
+
+                        // 3. Gửi Tag tiếng Anh + Lời Tiếng Việt chuẩn sang ACE Cloud API để hát
                         const mp3Url = await generateAceMusic(musicData.prompt, musicData.lyrics);
                         
                         if (mp3Url) {
-                            await sendAudio(chatId, mp3Url, `🎶 Bài hát ca từ Tiếng Việt cho Onii-chan đây ạ!\n✨ **Phong cách:** *${musicData.prompt}*\n\n📝 **Lời bài hát:**\n${musicData.lyrics}`);
+                            await sendAudio(chatId, mp3Url, `🎶 Bản nhạc MP3 của Onii-chan đây ạ! (Phong cách: ${musicData.prompt})`);
                             addLog(chatId, userQuestion, `[Gửi file nhạc MP3 ACE Music: ${mp3Url}]`);
                         } else {
-                            await sendMessage(chatId, `📝 **Lời bài hát em vừa sáng tác cho Onii-chan:**\n\n${musicData.lyrics}\n\n*(Dạ Onii-chan ơi, Siêu máy chủ ACE Cloud đang bận/quá tải chưa kịp gửi file audio về, em đã lưu lại lời bài hát tuyệt đẹp này cho Onii-chan rồi nè! 🌸)*`);
+                            await sendMessage(chatId, `*(Dạ Onii-chan ơi, Siêu máy chủ ACE Cloud đang bận/quá tải chưa kịp gửi file audio về, em đã gửi trước lời bài hát tuyệt đẹp này cho Onii-chan rồi nè! 🌸)*`);
                             addLog(chatId, userQuestion, "[Sáng tác lời bài hát thành công]");
                         }
                     }
@@ -877,7 +867,7 @@ async function getUpdates() {
                             if (mp3Url) {
                                 await sendAudio(chatId, mp3Url, `🎶 Bài hát sáng tác theo yêu cầu của Onii-chan đây ạ: "${songPrompt}"`);
                             } else {
-                                await sendMessage(chatId, `📝 **Lời bài hát em sáng tác cho Onii-chan:**\n\n${songPrompt}`);
+                                await sendMessage(chatId, `📝 Lời bài hát em sáng tác cho Onii-chan:\n\n${songPrompt}`);
                             }
                         }
                         else if ((imgMatch && imgMatch[1]) || isDrawCommand) {
